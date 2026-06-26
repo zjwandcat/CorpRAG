@@ -1,0 +1,28 @@
+# Python 缓存文件
+__pycache__
+*.pyc
+
+# Python 虚拟环境
+venv/
+.venv/
+
+# 日志文件
+*.log
+
+# Git 版本控制
+.git/
+.gitignore
+
+# 环境变量文件（包含敏感信息，不应打入镜像）
+.env
+
+# Docker 相关文件（避免递归复制）
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# 向量数据库本地目录（容器内会重新生成）
+chroma_db/
+
+# NIM 配置文件（包含 API Key）
+nim_config.txt

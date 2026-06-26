@@ -1,0 +1,41 @@
+# LlamaIndex 核心依赖
+llama-index>=0.11.0
+llama-index-llms-nvidia>=0.2.0
+llama-index-llms-openai>=0.2.0
+llama-index-llms-openai-like>=0.2.0
+llama-index-embeddings-nvidia>=0.2.0
+llama-index-readers-file>=0.2.0
+llama-index-vector-stores-chroma>=0.2.0
+# BM25 检索器由启动脚本单独安装（pystemmer 需要预编译版本）
+# llama-index-retrievers-bm25>=0.2.0
+
+# Web 框架
+fastapi>=0.115
+uvicorn[standard]>=0.34
+
+# 向量数据库
+chromadb>=0.5
+
+# 数据处理
+pandas>=2.0.0
+numpy>=1.26
+
+# 文件处理
+pypdf>=5.0
+python-docx>=1.0
+python-multipart>=0.0.20
+
+# 数据验证
+pydantic>=2.10
+
+# 限速
+slowapi>=0.1.9
+
+# 搜索
+duckduckgo-search>=6.0
+
+# Markdown 处理
+markdown>=3.5
+
+# HTTP
+requests>=2.32

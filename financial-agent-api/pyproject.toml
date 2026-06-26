@@ -1,0 +1,82 @@
+[project]
+name = "enterprise-knowledge-agent-api"
+version = "1.0.0"
+description = "企业内部办公知识库智能体 API 系统"
+requires-python = ">=3.14"
+license = {text = "MIT"}
+dependencies = [
+    "chromadb>=0.6",
+    "duckduckgo-search>=6.0",
+    "fastapi>=0.115",
+    "httpx>=0.27.0",
+    "jieba>=0.42",
+    "langchain>=0.3",
+    "langchain-chroma>=0.2",
+    "langchain-community>=0.3",
+    "langchain-core>=0.3",
+    "langchain-nvidia-ai-endpoints>=0.3",
+    "langchain-text-splitters>=0.3",
+    "pydantic>=2.10",
+    "pypdf>=5.0",
+    "python-docx>=1.0",
+    "python-multipart>=0.0.20",
+    "rank_bm25>=0.2",
+    "requests>=2.32",
+    "slowapi>=0.1.9",
+    "unstructured>=0.15",
+    "uvicorn[standard]>=0.34",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["app", "scripts", "step1_agent.py", "step2_rag.py", "run.py"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "UP", "B", "C4", "SIM",
+    "ANN", "S", "RUF", "PL", "PERF", "FURB", "LOG", "TID",
+]
+ignore = [
+    "ANN101",  # self 不需要类型标注
+    "ANN102",  # cls 不需要类型标注
+    "ANN003",  # **kwargs 不需要强制标注
+    "S101",    # 允许 assert
+    "E501",    # 行宽由 formatter 管
+    "PLR0913", # 允许函数参数多
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "ANN"]
+"scripts/*" = ["ANN"]
+"step1_agent.py" = ["ANN"]
+"step2_rag.py" = ["ANN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["langchain.*", "chromadb.*", "langchain_nvidia_ai_endpoints.*"]
+ignore_missing_imports = true

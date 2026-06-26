@@ -1,0 +1,943 @@
+﻿python : warning: The following rules have been removed and ignoring them has no effect:
+At line:1 char:1
++ python -m ruff check "C:/Users/27553/Desktop/rag/financial-agent-api/ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: The fo... has no effect::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    - ANN101
+    - ANN102
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> financial-agent-api/app/agent/chain.py:1:1
+   |
+ 1 | / import json
+ 2 | | import logging
+ 3 | | import random
+ 4 | | import re
+ 5 | | import threading
+ 6 | | import time
+ 7 | | from typing import Any
+ 8 | | from uuid import uuid4
+ 9 | |
+10 | | from langchain_core.language_models import BaseChatModel
+11 | | from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+12 | | from langchain_core.tools import BaseTool
+13 | |
+14 | | from app.core.enums import ErrorCode
+15 | | from app.exceptions import LLMInvocationError, RateLimitExceededError, ToolExecutionError
+16 | | from app.models.schemas import ChatResponse, SourceReference, ToolCallStep
+   | |__________________________________________________________________________^
+17 |
+18 |   logger = logging.getLogger(__name__)
+   |
+help: Organize imports
+
+E501 Line too long (89 > 88)
+  --> financial-agent-api/app/agent/chain.py:15:89
+   |
+14 | from app.core.enums import ErrorCode
+15 | from app.exceptions import LLMInvocationError, RateLimitExceededError, ToolExecutionError
+   |                                                                                         ^
+16 | from app.models.schemas import ChatResponse, SourceReference, ToolCallStep
+   |
+
+E501 Line too long (95 > 88)
+  --> financial-agent-api/app/agent/chain.py:48:89
+   |
+46 |     3. 按 Provider 差异化限速参数
+47 |     """
+48 |     __slots__ = ("_lock", "_semaphore", "_timestamps", "max_rpm", "max_concurrent", "provider")
+   |                                                                                         ^^^^^^^
+49 |
+50 |     # 各 Provider 默认限速参数
+   |
+
+E501 Line too long (98 > 88)
+  --> financial-agent-api/app/agent/chain.py:57:89
+   |
+55 |     }
+56 |
+57 |     def __init__(self, max_rpm: int = 15, max_concurrent: int = 5, provider: str = "nim") -> None:
+   |                                                                                         ^^^^^^^^^^
+58 |         self.max_rpm = max_rpm
+59 |         self.max_concurrent = max_concurrent
+   |
+
+UP037 [*] Remove quotes from type annotation
+  --> financial-agent-api/app/agent/chain.py:66:83
+   |
+65 |     @classmethod
+66 |     def from_provider(cls, provider: str, max_rpm_override: int | None = None) -> "RateLimiter":
+   |                                                                                   ^^^^^^^^^^^^^
+67 |         """根据 Provider 创建限速器"""
+68 |         defaults = cls._PROVIDER_DEFAULTS.get(provider, cls._PROVIDER_DEFAULTS["nim"])
+   |
+help: Remove quotes
+
+E501 Line too long (96 > 88)
+  --> financial-agent-api/app/agent/chain.py:66:89
+   |
+65 |     @classmethod
+66 |     def from_provider(cls, provider: str, max_rpm_override: int | None = None) -> "RateLimiter":
+   |                                                                                         ^^^^^^^^
+67 |         """根据 Provider 创建限速器"""
+68 |         defaults = cls._PROVIDER_DEFAULTS.get(provider, cls._PROVIDER_DEFAULTS["nim"])
+   |
+
+PLW0603 Using the global statement to update `_rate_limiter_instance` is discouraged
+   --> financial-agent-api/app/agent/chain.py:112:12
+    |
+111 | def get_rate_limiter() -> RateLimiter:
+112 |     global _rate_limiter_instance
+    |            ^^^^^^^^^^^^^^^^^^^^^^
+113 |     if _rate_limiter_instance is None:
+114 |         from app.core.config import settings
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/chain.py:114:9
+    |
+112 |     global _rate_limiter_instance
+113 |     if _rate_limiter_instance is None:
+114 |         from app.core.config import settings
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+115 |
+116 |         _rate_limiter_instance = RateLimiter.from_provider(
+    |
+
+E501 Line too long (101 > 88)
+   --> financial-agent-api/app/agent/chain.py:122:89
+    |
+120 |         logger.info(
+121 |             "限速器初始化，Provider=%s, RPM=%d, 并发=%d",
+122 |             settings.PROVIDER, _rate_limiter_instance.max_rpm, _rate_limiter_instance.max_concurrent,
+    |                                                                                         ^^^^^^^^^^^^^
+123 |         )
+124 |     return _rate_limiter_instance
+    |
+
+E501 Line too long (98 > 88)
+   --> financial-agent-api/app/agent/chain.py:191:89
+    |
+189 |     __slots__ = ("llm_with_tools", "sessions", "tools_by_name")
+190 |
+191 |     def __init__(self, llm_with_tools: BaseChatModel, tools_by_name: dict[str, BaseTool]) -> None:
+    |                                                                                         ^^^^^^^^^^
+192 |         self.llm_with_tools = llm_with_tools
+193 |         self.tools_by_name = tools_by_name
+    |
+
+E501 Line too long (99 > 88)
+   --> financial-agent-api/app/agent/chain.py:197:89
+    |
+195 |         logger.info("AgentChain 初始化完成，可用工具：%s", list(tools_by_name.keys()))
+196 |
+197 |     def _invoke_with_retry(self, messages: list[Any], max_retries: int | None = None) -> AIMessage:
+    |                                                                                         ^^^^^^^^^^^
+198 |         if max_retries is None:
+199 |             from app.core.config import settings
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/chain.py:199:13
+    |
+197 |     def _invoke_with_retry(self, messages: list[Any], max_retries: int | None = None) -> AIMessage:
+198 |         if max_retries is None:
+199 |             from app.core.config import settings
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+200 |
+201 |             max_retries = settings.RETRY_MAX_ATTEMPTS
+    |
+
+E501 Line too long (93 > 88)
+   --> financial-agent-api/app/agent/chain.py:216:89
+    |
+214 |                     if ErrorCode.RATE_LIMIT in err_str and attempt < max_retries - 1:
+215 |                         # 指数退避 + 随机抖动，避免多实例同步重试（雷群效应）
+216 |                         base_wait = min(10 * (2 ** attempt), 120)  # 10s, 20s, 40s, 80s, 120s
+    |                                                                                         ^^^^^
+217 |                         jitter = random.uniform(1, base_wait * 0.5)  # 1~5s, 1~10s, 1~20s, 1~40s, 1~60s
+218 |                         wait = base_wait + jitter
+    |
+
+E501 Line too long (103 > 88)
+   --> financial-agent-api/app/agent/chain.py:217:89
+    |
+215 |                         # 指数退避 + 随机抖动，避免多实例同步重试（雷群效应）
+216 |                         base_wait = min(10 * (2 ** attempt), 120)  # 10s, 20s, 40s, 80s, 120s
+217 |                         jitter = random.uniform(1, base_wait * 0.5)  # 1~5s, 1~10s, 1~20s, 1~40s, 1~60s
+    |                                                                                         ^^^^^^^^^^^^^^^
+218 |                         wait = base_wait + jitter
+219 |                         logger.warning("429 限流，%.1f 秒后重试（第 %d 次）", wait, attempt + 1)
+    |
+
+E501 Line too long (96 > 88)
+   --> financial-agent-api/app/agent/chain.py:219:78
+    |
+217 |                         jitter = random.uniform(1, base_wait * 0.5)  # 1~5s, 1~10s, 1~20s, 1~40s, 1~60s
+218 |                         wait = base_wait + jitter
+219 |                         logger.warning("429 限流，%.1f 秒后重试（第 %d 次）", wait, attempt + 1)
+    |                                                                                         ^^^^^^^^
+220 |                         time.sleep(wait)
+221 |                         limiter.wait()
+    |
+
+E501 Line too long (99 > 88)
+   --> financial-agent-api/app/agent/chain.py:229:85
+    |
+227 |                         ) from exc
+228 |                     else:
+229 |                         raise LLMInvocationError(message="LLM 调用失败", details=str(exc)) from exc
+    |                                                                                         ^^^^^^^^^^^
+230 |         finally:
+231 |             limiter.release()
+    |
+
+E501 Line too long (96 > 88)
+   --> financial-agent-api/app/agent/chain.py:245:89
+    |
+243 |         for tool_call in tool_calls:
+244 |             match tool_call:
+245 |                 case {"name": str(tool_name), "args": dict(tool_args), "id": str(tool_call_id)}:
+    |                                                                                         ^^^^^^^^
+246 |                     logger.info("工具调用：%s", tool_name)
+247 |                     logger.debug("工具参数：%s", json.dumps(tool_args, ensure_ascii=False))
+    |
+
+E501 Line too long (91 > 88)
+   --> financial-agent-api/app/agent/chain.py:247:84
+    |
+245 |                 case {"name": str(tool_name), "args": dict(tool_args), "id": str(tool_call_id)}:
+246 |                     logger.info("工具调用：%s", tool_name)
+247 |                     logger.debug("工具参数：%s", json.dumps(tool_args, ensure_ascii=False))
+    |                                                                                         ^^^
+248 |
+249 |                     step_start = time.monotonic()
+    |
+
+E501 Line too long (96 > 88)
+   --> financial-agent-api/app/agent/chain.py:281:89
+    |
+279 |                     )
+280 |                     intermediate_steps.append(step)
+281 |                     messages.append(ToolMessage(content=str(result), tool_call_id=tool_call_id))
+    |                                                                                         ^^^^^^^^
+282 |                 case _:
+283 |                     logger.warning("未知的工具调用格式：%s", tool_call)
+    |
+
+E501 Line too long (96 > 88)
+   --> financial-agent-api/app/agent/chain.py:284:81
+    |
+282 |                 case _:
+283 |                     logger.warning("未知的工具调用格式：%s", tool_call)
+284 |                     raise ToolExecutionError(message="工具调用格式无效", details=str(tool_call))
+    |                                                                                         ^^^^^^^^
+285 |
+286 |         return tools_used, intermediate_steps
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/chain.py:289:9
+    |
+288 |     def run(self, query: str, session_id: str | None = None) -> ChatResponse:
+289 |         from app.core.config import settings
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+290 |
+291 |         total_start = time.monotonic()
+    |
+
+E501 Line too long (89 > 88)
+   --> financial-agent-api/app/agent/chain.py:319:89
+    |
+318 |             logger.info("LLM 请求调用 %d 个工具", len(ai_message.tool_calls))
+319 |             tools_used, steps = self._execute_tool_calls(ai_message.tool_calls, messages)
+    |                                                                                         ^
+320 |             all_tools_used.extend(tools_used)
+321 |             all_intermediate_steps.extend(steps)
+    |
+
+E501 Line too long (97 > 88)
+   --> financial-agent-api/app/agent/chain.py:323:70
+    |
+321 |             all_intermediate_steps.extend(steps)
+322 |         else:
+323 |             logger.warning("达到最大工具调用轮数 %d，强制生成最终回答", settings.MAX_TOOL_ROUNDS)
+    |                                                                                         ^^^^^^^^^
+324 |             ai_message = self._invoke_with_retry(messages)
+325 |             messages.append(ai_message)
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> financial-agent-api/app/agent/graph.py:7:1
+   |
+ 5 |   """
+ 6 |
+ 7 | / import json
+ 8 | | import logging
+ 9 | | import random
+10 | | import time
+11 | | from datetime import datetime, timezone
+12 | | from typing import Annotated, Any, AsyncGenerator, Literal, TypedDict
+13 | |
+14 | | from langchain_chroma import Chroma
+15 | | from langchain_core.language_models import BaseChatModel
+16 | | from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+17 | | from langchain_core.tools import BaseTool
+18 | | from langgraph.checkpoint.memory import MemorySaver
+19 | | from langgraph.graph import END, StateGraph
+20 | | from langgraph.graph.message import add_messages
+21 | |
+22 | | from app.agent.chain import _extract_sources, _infer_result_type, get_rate_limiter
+23 | | from app.core.enums import ErrorCode, SSEEventType
+24 | | from app.exceptions import LLMInvocationError, RateLimitExceededError
+25 | | from app.models.schemas import ChatResponse, SourceReference, ToolCallStep
+   | |__________________________________________________________________________^
+26 |
+27 |   logger = logging.getLogger(__name__)
+   |
+help: Organize imports
+
+UP035 [*] Import from `collections.abc` instead: `AsyncGenerator`
+  --> financial-agent-api/app/agent/graph.py:12:1
+   |
+10 | import time
+11 | from datetime import datetime, timezone
+12 | from typing import Annotated, Any, AsyncGenerator, Literal, TypedDict
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |
+14 | from langchain_chroma import Chroma
+   |
+help: Import from `collections.abc`
+
+E501 Line too long (100 > 88)
+  --> financial-agent-api/app/agent/graph.py:16:89
+   |
+14 | from langchain_chroma import Chroma
+15 | from langchain_core.language_models import BaseChatModel
+16 | from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+   |                                                                                         ^^^^^^^^^^^^
+17 | from langchain_core.tools import BaseTool
+18 | from langgraph.checkpoint.memory import MemorySaver
+   |
+
+E501 Line too long (100 > 88)
+  --> financial-agent-api/app/agent/graph.py:44:50
+   |
+42 |     "重要：联网搜索 vs 内部文档的判断标准：\n"
+43 |     "- 如果用户问题明确涉及公司内部制度、流程、规范 → search_internal_documents\n"
+44 |     "- 如果用户问题涉及外部信息（如行业趋势、市场数据、新闻资讯、技术博客、公开知识）→ search_web\n"
+   |                                                                                         ^^^^^^^^^^^^
+45 |     "- 如果 search_internal_documents 返回的结果与用户问题不相关 → 应该再尝试 search_web\n"
+46 |     "- 如果不确定信息来源 → 先尝试 search_internal_documents，结果不相关时再用 search_web\n\n"
+   |
+
+E501 Line too long (91 > 88)
+  --> financial-agent-api/app/agent/graph.py:45:69
+   |
+43 |     "- 如果用户问题明确涉及公司内部制度、流程、规范 → search_internal_documents\n"
+44 |     "- 如果用户问题涉及外部信息（如行业趋势、市场数据、新闻资讯、技术博客、公开知识）→ search_web\n"
+45 |     "- 如果 search_internal_documents 返回的结果与用户问题不相关 → 应该再尝试 search_web\n"
+   |                                                                                         ^^^
+46 |     "- 如果不确定信息来源 → 先尝试 search_internal_documents，结果不相关时再用 search_web\n\n"
+47 |     "重要原则：\n"
+   |
+
+E501 Line too long (94 > 88)
+  --> financial-agent-api/app/agent/graph.py:46:68
+   |
+44 |     "- 如果用户问题涉及外部信息（如行业趋势、市场数据、新闻资讯、技术博客、公开知识）→ search_web\n"
+45 |     "- 如果 search_internal_documents 返回的结果与用户问题不相关 → 应该再尝试 search_web\n"
+46 |     "- 如果不确定信息来源 → 先尝试 search_internal_documents，结果不相关时再用 search_web\n\n"
+   |                                                                                         ^^^^^^
+47 |     "重要原则：\n"
+48 |     "- 必须先调用对应工具获取信息，再基于工具返回结果给出自然语言回答\n"
+   |
+
+E501 Line too long (105 > 88)
+  --> financial-agent-api/app/agent/graph.py:54:59
+   |
+52 | )
+53 |
+54 | _FORCE_END_PROMPT = "\n\n[系统提示] 已达到最大推理轮数，请基于已有信息生成最终回答，不要再调用任何工具。"
+   |                                                                                         ^^^^^^^^^^^^^^^^^
+   |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:103:5
+    |
+101 |     5. 返回状态更新片段
+102 |     """
+103 |     from app.core.config import settings
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+104 |
+105 |     messages = state["messages"]
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:143:5
+    |
+141 |     使用并发池控制 + 滑动窗口限速，避免洪峰式请求。
+142 |     """
+143 |     from app.core.config import settings
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+144 |
+145 |     if max_retries is None:
+    |
+
+E501 Line too long (92 > 88)
+   --> financial-agent-api/app/agent/graph.py:164:78
+    |
+162 |                     jitter = random.uniform(1, base_wait * 0.5)
+163 |                     wait = base_wait + jitter
+164 |                     logger.warning("429 限流，%.1f 秒后重试（第 %d 次）", wait, attempt + 1)
+    |                                                                                         ^^^^
+165 |                     time.sleep(wait)
+166 |                     limiter.wait()
+    |
+
+E501 Line too long (95 > 88)
+   --> financial-agent-api/app/agent/graph.py:174:85
+    |
+172 |                     ) from exc
+173 |                 else:
+174 |                     raise LLMInvocationError(message="LLM 调用失败", details=str(exc)) from exc
+    |                                                                                         ^^^^^^^
+175 |     finally:
+176 |         limiter.release()
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:276:5
+    |
+274 |     8. 更新 current_status = "retrieving"
+275 |     """
+276 |     from app.rag.vectorstore import hybrid_search
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+277 |
+278 |     messages = state["messages"]
+    |
+
+E501 Line too long (94 > 88)
+   --> financial-agent-api/app/agent/graph.py:321:89
+    |
+319 |                 if docs and reranker is not None:
+320 |                     try:
+321 |                         rerank_results = reranker.rerank(query=query, documents=docs, top_n=3)
+    |                                                                                         ^^^^^^
+322 |                         if rerank_results:
+323 |                             docs = [r.document for r in rerank_results]
+    |
+
+E501 Line too long (94 > 88)
+   --> financial-agent-api/app/agent/graph.py:326:82
+    |
+324 |                             for r in rerank_results:
+325 |                                 r.document.metadata["rerank_score"] = r.relevance_score
+326 |                             logger.info("Reranker 精排完成，top %d 结果", len(rerank_results))
+    |                                                                                         ^^^^^^
+327 |                         else:
+328 |                             logger.warning("Reranker 降级，使用 RRF 原始排序")
+    |
+
+E501 Line too long (94 > 88)
+   --> financial-agent-api/app/agent/graph.py:347:89
+    |
+345 |                         rerank_metadata.append({
+346 |                             "source": source,
+347 |                             "score": float(rerank_score) if rerank_score is not None else 0.0,
+    |                                                                                         ^^^^^^
+348 |                             "rerank_score": float(rerank_score) if rerank_score is not None else None,
+349 |                         })
+    |
+
+E501 Line too long (102 > 88)
+   --> financial-agent-api/app/agent/graph.py:348:89
+    |
+346 |                             "source": source,
+347 |                             "score": float(rerank_score) if rerank_score is not None else 0.0,
+348 |                             "rerank_score": float(rerank_score) if rerank_score is not None else None,
+    |                                                                                         ^^^^^^^^^^^^^^
+349 |                         })
+    |
+
+E501 Line too long (91 > 88)
+   --> financial-agent-api/app/agent/graph.py:360:74
+    |
+358 |                         result += f"\n\n<!--RAG_METADATA:{metadata_json}-->"
+359 |
+360 |                     logger.info("检索到 %d 个相关文本块（混合检索 + Reranker）", len(docs))
+    |                                                                                         ^^^
+361 |
+362 |                 duration_ms = int((time.monotonic() - step_start) * 1000)
+    |
+
+E501 Line too long (91 > 88)
+   --> financial-agent-api/app/agent/graph.py:376:89
+    |
+374 |                 )
+375 |                 new_tool_outputs.append(step)
+376 |                 new_messages.append(ToolMessage(content=result, tool_call_id=tool_call_id))
+    |                                                                                         ^^^
+377 |
+378 |             except Exception as exc:
+    |
+
+E501 Line too long (97 > 88)
+   --> financial-agent-api/app/agent/graph.py:392:89
+    |
+390 |                 )
+391 |                 new_tool_outputs.append(step)
+392 |                 new_messages.append(ToolMessage(content=error_result, tool_call_id=tool_call_id))
+    |                                                                                         ^^^^^^^^^
+393 |
+394 |         else:
+    |
+
+E501 Line too long (92 > 88)
+   --> financial-agent-api/app/agent/graph.py:429:89
+    |
+427 |             )
+428 |             new_tool_outputs.append(step)
+429 |             new_messages.append(ToolMessage(content=str(result), tool_call_id=tool_call_id))
+    |                                                                                         ^^^^
+430 |
+431 |     return {
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:560:9
+    |
+558 |             ChatResponse 包含回答、工具调用步骤、耗时等
+559 |         """
+560 |         from app.core.config import settings
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+561 |         from uuid import uuid4
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+   --> financial-agent-api/app/agent/graph.py:560:9
+    |
+558 |               ChatResponse 包含回答、工具调用步骤、耗时等
+559 |           """
+560 | /         from app.core.config import settings
+561 | |         from uuid import uuid4
+    | |______________________________^
+562 |
+563 |           total_start = time.monotonic()
+    |
+help: Organize imports
+
+F401 [*] `app.core.config.settings` imported but unused
+   --> financial-agent-api/app/agent/graph.py:560:37
+    |
+558 |             ChatResponse 包含回答、工具调用步骤、耗时等
+559 |         """
+560 |         from app.core.config import settings
+    |                                     ^^^^^^^^
+561 |         from uuid import uuid4
+    |
+help: Remove unused import: `app.core.config.settings`
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:561:9
+    |
+559 |         """
+560 |         from app.core.config import settings
+561 |         from uuid import uuid4
+    |         ^^^^^^^^^^^^^^^^^^^^^^
+562 |
+563 |         total_start = time.monotonic()
+    |
+
+E501 Line too long (91 > 88)
+   --> financial-agent-api/app/agent/graph.py:583:89
+    |
+581 |                 if existing_messages:
+582 |                     has_existing_state = True
+583 |                     saved_iteration_count = existing_state.values.get("iteration_count", 0)
+    |                                                                                         ^^^
+584 |                     logger.info("从 MemorySaver 恢复会话：%s，历史消息数：%d", session_id, len(existing_messages))
+585 |         except Exception as exc:
+    |
+
+E501 Line too long (114 > 88)
+   --> financial-agent-api/app/agent/graph.py:584:76
+    |
+582 |                     has_existing_state = True
+583 |                     saved_iteration_count = existing_state.values.get("iteration_count", 0)
+584 |                     logger.info("从 MemorySaver 恢复会话：%s，历史消息数：%d", session_id, len(existing_messages))
+    |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+585 |         except Exception as exc:
+586 |             logger.warning("MemorySaver 读取失败，降级为无记忆模式：%s", exc)
+    |
+
+E501 Line too long (97 > 88)
+   --> financial-agent-api/app/agent/graph.py:601:89
+    |
+599 |             logger.info("创建新会话：%s", session_id)
+600 |             input_state = {
+601 |                 "messages": [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=query)],
+    |                                                                                         ^^^^^^^^^
+602 |                 "retrieval_context": [],
+603 |                 "tool_outputs": [],
+    |
+
+F841 Local variable `retrieval_context` is assigned to but never used
+   --> financial-agent-api/app/agent/graph.py:626:9
+    |
+624 |         final_messages = result.get("messages", [])
+625 |         tool_outputs = result.get("tool_outputs", [])
+626 |         retrieval_context = result.get("retrieval_context", [])
+    |         ^^^^^^^^^^^^^^^^^
+627 |
+628 |         # 提取最终回答（最后一条 AIMessage 的 content）
+    |
+help: Remove assignment to unused variable `retrieval_context`
+
+E501 Line too long (95 > 88)
+   --> financial-agent-api/app/agent/graph.py:642:72
+    |
+641 |         total_duration_ms = int((time.monotonic() - total_start) * 1000)
+642 |         logger.info("状态图执行完成，回答长度：%d，耗时：%dms", len(answer), total_duration_ms)
+    |                                                                                         ^^^^^^^
+643 |
+644 |         return ChatResponse(
+    |
+
+UP043 [*] Unnecessary default type arguments
+   --> financial-agent-api/app/agent/graph.py:655:10
+    |
+653 |     async def run_stream(
+654 |         self, query: str, thread_id: str
+655 |     ) -> AsyncGenerator[dict, None]:
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+656 |         """异步流式执行，返回 SSE 事件生成器
+    |
+help: Remove default type arguments
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:668:9
+    |
+666 |             SSE 事件字典，包含 event, data, id 字段
+667 |         """
+668 |         from app.core.config import settings
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+
+UP017 [*] Use `datetime.UTC` alias
+   --> financial-agent-api/app/agent/graph.py:683:47
+    |
+681 |                     **data,
+682 |                     "thread_id": thread_id,
+683 |                     "timestamp": datetime.now(timezone.utc).isoformat(),
+    |                                               ^^^^^^^^^^^^
+684 |                 },
+685 |                 "id": f"{thread_id}-{event_seq}",
+    |
+help: Convert to `datetime.UTC` alias
+
+E501 Line too long (91 > 88)
+   --> financial-agent-api/app/agent/graph.py:704:89
+    |
+702 |                 if existing_messages:
+703 |                     has_existing_state = True
+704 |                     saved_iteration_count = existing_state.values.get("iteration_count", 0)
+    |                                                                                         ^^^
+705 |                     logger.info("流式执行：从 MemorySaver 恢复会话：%s", thread_id)
+706 |         except Exception as exc:
+    |
+
+E501 Line too long (97 > 88)
+   --> financial-agent-api/app/agent/graph.py:723:89
+    |
+721 |             logger.info("流式执行：创建新会话：%s", thread_id)
+722 |             input_state = {
+723 |                 "messages": [SystemMessage(content=_SYSTEM_PROMPT), HumanMessage(content=query)],
+    |                                                                                         ^^^^^^^^^
+724 |                 "retrieval_context": [],
+725 |                 "tool_outputs": [],
+    |
+
+F841 Local variable `tags` is assigned to but never used
+   --> financial-agent-api/app/agent/graph.py:747:21
+    |
+745 |                 # 节点开始
+746 |                 if kind == "on_chain_start":
+747 |                     tags = event.get("tags", [])
+    |                     ^^^^
+748 |                     node_name = event.get("name", "")
+749 |                     if node_name == "agent":
+    |
+help: Remove assignment to unused variable `tags`
+
+E501 Line too long (96 > 88)
+   --> financial-agent-api/app/agent/graph.py:773:89
+    |
+771 | …                     has_tool_calls = True
+772 | …                     tool_calls_list = [
+773 | …                         {"name": tc.get("name", ""), "args": tc.get("args", {})}
+    |                                                                           ^^^^^^^^
+774 | …                         for tc in msg.tool_calls
+775 | …                     ]
+    |
+
+E501 Line too long (92 > 88)
+   --> financial-agent-api/app/agent/graph.py:779:89
+    |
+777 | …                     has_tool_calls = True
+778 | …                     tool_calls_list = [
+779 | …                         {"name": tc.get("name", ""), "args": tc.get("args", {})}
+    |                                                                               ^^^^
+780 | …                         for tc in msg["tool_calls"]
+781 | …                     ]
+    |
+
+E501 Line too long (101 > 88)
+   --> financial-agent-api/app/agent/graph.py:804:89
+    |
+802 | …                     yield _make_event(SSEEventType.TOOL_RESULT, {
+803 | …                         "tool_name": step.tool_name,
+804 | …                         "result_summary": step.tool_result[:200] if step.tool_result else "",
+    |                                                                                   ^^^^^^^^^^^^^
+805 | …                         "duration_ms": step.duration_ms,
+806 | …                         "status": step.status,
+    |
+
+E501 Line too long (92 > 88)
+   --> financial-agent-api/app/agent/graph.py:819:89
+    |
+817 |                         if node_retrieval_context:
+818 |                             yield _make_event(SSEEventType.RETRIEVAL_RESULT, {
+819 |                                 "sources": [s.model_dump() for s in node_retrieval_context],
+    |                                                                                         ^^^^
+820 |                                 "total_count": len(node_retrieval_context),
+821 |                             })
+    |
+
+E501 Line too long (101 > 88)
+   --> financial-agent-api/app/agent/graph.py:835:89
+    |
+833 | …                     yield _make_event(SSEEventType.TOOL_RESULT, {
+834 | …                         "tool_name": step.tool_name,
+835 | …                         "result_summary": step.tool_result[:200] if step.tool_result else "",
+    |                                                                                   ^^^^^^^^^^^^^
+836 | …                         "duration_ms": step.duration_ms,
+837 | …                         "status": step.status,
+    |
+
+E501 Line too long (95 > 88)
+   --> financial-agent-api/app/agent/graph.py:843:89
+    |
+841 |                 elif kind == "on_chat_model_stream":
+842 |                     chunk = event.get("data", {}).get("chunk")
+843 |                     if chunk and hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
+    |                                                                                         ^^^^^^^
+844 |                         for tc_chunk in chunk.tool_call_chunks:
+845 |                             # 兼容 ToolCallChunk 对象和字典
+    |
+
+E501 Line too long (125 > 88)
+   --> financial-agent-api/app/agent/graph.py:846:89
+    |
+844 |                         for tc_chunk in chunk.tool_call_chunks:
+845 |                             # 兼容 ToolCallChunk 对象和字典
+846 |                             tc_name = tc_chunk.get("name") if isinstance(tc_chunk, dict) else getattr(tc_chunk, "name", None)
+    |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+847 |                             tc_args = tc_chunk.get("args") if isinstance(tc_chunk, dict) else getattr(tc_chunk, "args", {})
+848 |                             if tc_name:
+    |
+
+E501 Line too long (123 > 88)
+   --> financial-agent-api/app/agent/graph.py:847:89
+    |
+845 | …                     # 兼容 ToolCallChunk 对象和字典
+846 | …                     tc_name = tc_chunk.get("name") if isinstance(tc_chunk, dict) else getattr(tc_chunk, "name", None)
+847 | …                     tc_args = tc_chunk.get("args") if isinstance(tc_chunk, dict) else getattr(tc_chunk, "args", {})
+    |                                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+848 | …                     if tc_name:
+849 | …                         yield _make_event(SSEEventType.TOOL_CALL, {
+    |
+
+E501 Line too long (91 > 88)
+   --> financial-agent-api/app/agent/graph.py:867:89
+    |
+865 |             if final_state and final_state.values:
+866 |                 final_messages = final_state.values.get("messages", [])
+867 |                 all_tool_outputs = final_state.values.get("tool_outputs", all_tool_outputs)
+    |                                                                                         ^^^
+868 |                 all_retrieval_context = final_state.values.get("retrieval_context", all_retrieval_context)
+    |
+
+E501 Line too long (106 > 88)
+   --> financial-agent-api/app/agent/graph.py:868:89
+    |
+866 |                 final_messages = final_state.values.get("messages", [])
+867 |                 all_tool_outputs = final_state.values.get("tool_outputs", all_tool_outputs)
+868 |                 all_retrieval_context = final_state.values.get("retrieval_context", all_retrieval_context)
+    |                                                                                         ^^^^^^^^^^^^^^^^^^
+869 |
+870 |                 for msg in reversed(final_messages):
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/graph.py:937:9
+    |
+935 |             config: LangGraph 配置（含 thread_id）
+936 |         """
+937 |         from app.core.config import settings
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+938 |
+939 |         if not messages or len(messages) <= settings.SESSION_MAX_MESSAGES:
+    |
+
+E501 Line too long (90 > 88)
+   --> financial-agent-api/app/agent/graph.py:946:89
+    |
+944 |         non_system_messages = [m for m in messages if not isinstance(m, SystemMessage)]
+945 |
+946 |         truncated = system_messages + non_system_messages[-settings.SESSION_MAX_MESSAGES:]
+    |                                                                                         ^^
+947 |
+948 |         logger.info(
+    |
+
+W292 [*] No newline at end of file
+   --> financial-agent-api/app/agent/graph.py:970:52
+    |
+968 |             self._compiled_graph.update_state(config, truncated_state, as_node="agent")
+969 |         except Exception as exc:
+970 |             logger.warning("消息窗口截断后更新状态失败：%s", exc)
+    |                                                                  ^
+    |
+help: Add trailing newline
+
+E501 Line too long (95 > 88)
+  --> financial-agent-api/app/agent/tools.py:22:89
+   |
+22 | def make_search_internal_documents_tool(vectorstore: Chroma, reranker: Any = None) -> BaseTool:
+   |                                                                                         ^^^^^^^
+23 |     @tool
+24 |     def search_internal_documents(query: str, department: str = "通用") -> str:
+   |
+
+PLC0415 `import` should be at the top-level of a file
+  --> financial-agent-api/app/agent/tools.py:39:9
+   |
+37 |         )
+38 |
+39 |         from app.rag.vectorstore import hybrid_search
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+40 |
+41 |         all_docs = vectorstore.get()["documents"]
+   |
+
+E501 Line too long (99 > 88)
+  --> financial-agent-api/app/agent/tools.py:42:89
+   |
+41 |         all_docs = vectorstore.get()["documents"]
+42 |         all_documents: list[str] = [doc for doc in all_docs if doc is not None] if all_docs else []
+   |                                                                                         ^^^^^^^^^^^
+43 |
+44 |         # Step 1: hybrid_search（向量 + BM25 + RRF 融合）
+   |
+
+E501 Line too long (90 > 88)
+  --> financial-agent-api/app/agent/tools.py:85:89
+   |
+83 |                 "source": source,
+84 |                 "score": float(rerank_score) if rerank_score is not None else 0.0,
+85 |                 "rerank_score": float(rerank_score) if rerank_score is not None else None,
+   |                                                                                         ^^
+86 |             })
+   |
+
+PLC0415 `import` should be at the top-level of a file
+  --> financial-agent-api/app/agent/tools.py:89:13
+   |
+88 |         if rerank_metadata:
+89 |             import json
+   |             ^^^^^^^^^^^
+90 |             metadata_json = json.dumps(
+91 |                 {"sources": rerank_metadata}, ensure_ascii=False
+   |
+
+PLC0415 `import` should be at the top-level of a file
+   --> financial-agent-api/app/agent/tools.py:169:13
+    |
+167 |         logger.info("执行工具 search_web，query=%s", query)
+168 |         try:
+169 |             from duckduckgo_search import DDGS
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+170 |
+171 |             with DDGS() as ddgs:
+    |
+
+E501 Line too long (94 > 88)
+   --> financial-agent-api/app/agent/tools.py:234:54
+    |
+233 |         当产品经理需要快速撰写产品需求文档时调用此工具，
+234 |         输出包含需求背景、目标用户、核心功能点、业务流程、异常处理、验收标准的 Markdown 文档。
+    |                                                                                         ^^^^^^
+235 |
+236 |         Args:
+    |
+
+E501 Line too long (96 > 88)
+   --> financial-agent-api/app/agent/tools.py:238:64
+    |
+236 |         Args:
+237 |             feature_name: 功能名称，例如 "智能报销审批"
+238 |             brief_description: 功能简要描述，例如 "通过 AI 自动审核报销单据，减少人工审批工作量"
+    |                                                                                          ^^^^^^^
+239 |
+240 |         Returns:
+    |
+
+E501 Line too long (100 > 88)
+   --> financial-agent-api/app/agent/tools.py:280:84
+    |
+278 |             包含 Mermaid flowchart 代码的字符串
+279 |         """
+280 |         logger.info("执行工具 generate_flowchart_code，process_description=%s", process_description)
+    |                                                                                         ^^^^^^^^^^^^
+281 |         try:
+282 |             system_prompt = (
+    |
+
+E501 Line too long (100 > 88)
+   --> financial-agent-api/app/agent/tools.py:283:65
+    |
+281 |         try:
+282 |             system_prompt = (
+283 |                 "你是一位流程设计专家，请将以下业务流程描述转化为 Mermaid.js flowchart 语法代码。\n"
+    |                                                                                          ^^^^^^^^^^^
+284 |                 "仅输出合法的 Mermaid 代码，不要输出任何其他解释文字。\n"
+285 |                 "请使用 graph TD 或 graph LR 语法，确保节点命名清晰、流程完整。"
+    |
+
+E501 Line too long (92 > 88)
+   --> financial-agent-api/app/agent/tools.py:287:82
+    |
+285 |                 "请使用 graph TD 或 graph LR 语法，确保节点命名清晰、流程完整。"
+286 |             )
+287 |             result = _invoke_llm(llm, system_prompt, f"业务流程描述：{process_description}")
+    |                                                                                         ^^^^
+288 |         except Exception as exc:
+289 |             result = f"流程图代码生成失败：{exc}"
+    |
+
+E501 Line too long (94 > 88)
+   --> financial-agent-api/app/agent/tools.py:311:84
+    |
+309 |             完整的 HTML 代码字符串
+310 |         """
+311 |         logger.info("执行工具 generate_html_prototype，page_description=%s", page_description)
+    |                                                                                         ^^^^^^
+312 |         try:
+313 |             system_prompt = (
+    |
+
+Found 83 errors.
+[*] 9 fixable with the `--fix` option (2 hidden fixes can be enabled with the `--unsafe-fixes` option).
