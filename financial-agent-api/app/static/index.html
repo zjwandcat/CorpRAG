@@ -17,6 +17,8 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" id="hljs-theme">
   <!-- highlight.js CDN (代码高亮 JS) -->
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js"></script>
+  <!-- Chart.js CDN (图表渲染) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <!-- 注意：Mermaid.js 不在初始加载，采用动态加载以优化性能 -->
 
   <!-- Tailwind 自定义配置 (v2 扩展) -->
@@ -299,6 +301,77 @@
     </toast-item>
   </div>
 
+  <!-- ===== HITL 审批弹窗 ===== -->
+  <div v-if="showHitlModal && currentApproval"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    @click.self="closeHitlModal">
+    <!-- 遮罩层 -->
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <!-- 弹窗主体 -->
+    <div class="relative w-full max-w-lg glass-panel rounded-2xl shadow-2xl border border-slate-600/50 overflow-hidden animate-fade-in-up"
+      style="animation: fadeInUp 250ms ease-out;">
+      <!-- 标题栏 -->
+      <div class="flex items-center gap-3 px-6 py-4 border-b border-slate-700/50 bg-slate-800/50">
+        <div class="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
+          <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-sm font-semibold text-slate-100">人工审批请求</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Agent 请求执行以下操作，请审核</p>
+        </div>
+        <button @click="closeHitlModal" class="text-slate-400 hover:text-slate-200 transition-colors" aria-label="关闭弹窗">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <!-- 审批内容 -->
+      <div class="px-6 py-5 space-y-4">
+        <!-- 工具名称 -->
+        <div>
+          <div class="text-xs text-slate-400 font-medium mb-1.5">待审批工具</div>
+          <div class="flex items-center gap-2 px-3 py-2 bg-slate-800/60 rounded-lg border border-slate-700/50">
+            <span class="text-sm">🔧</span>
+            <span class="text-sm font-semibold text-[#76B900]">{{ currentApproval.tool_name || '未知工具' }}</span>
+          </div>
+        </div>
+        <!-- 工具调用参数 -->
+        <div>
+          <div class="text-xs text-slate-400 font-medium mb-1.5">调用参数</div>
+          <pre class="bg-slate-900/80 rounded-lg p-3 text-xs text-slate-300 overflow-x-auto max-h-48 border border-slate-700/50 font-mono">{{ formatHitlJson(currentApproval.tool_args || currentApproval.args || {}) }}</pre>
+        </div>
+        <!-- 审批结果反馈 -->
+        <div v-if="hitlResultMessage"
+          :class="hitlResultMessage.startsWith('✅') ? 'bg-green-500/10 border-green-500/30 text-green-400' : hitlResultMessage.startsWith('🚫') ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' : 'bg-red-500/10 border-red-500/30 text-red-400'"
+          class="rounded-lg px-4 py-2.5 text-sm font-medium border">
+          {{ hitlResultMessage }}
+        </div>
+      </div>
+      <!-- 操作按钮 -->
+      <div class="flex gap-3 px-6 py-4 border-t border-slate-700/50 bg-slate-800/30">
+        <button @click="approveHitl(currentApproval.id)"
+          :disabled="hitlProcessing"
+          class="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md btn-hover flex items-center justify-center gap-2">
+          <div v-if="hitlProcessing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          批准执行
+        </button>
+        <button @click="rejectHitl(currentApproval.id)"
+          :disabled="hitlProcessing"
+          class="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md btn-hover flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+          拒绝并修改
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 移动端菜单按钮 ===== -->
   <button @click="sidebarOpen = !sidebarOpen"
     class="fixed top-3 left-3 z-50 lg:hidden p-2 bg-slate-800 text-white rounded-lg shadow-lg btn-hover"
@@ -416,6 +489,34 @@
             class="w-full px-3 py-2 bg-[#76B900] hover:bg-[#8ed113] text-white text-xs rounded-lg font-semibold transition-colors shadow-sm hover:shadow-md btn-hover">
             保存配置
           </button>
+          <!-- 连通测试按钮 -->
+          <button @click="testApiKey" :disabled="testingApiKey"
+            class="w-full mt-2 px-3 py-2 border border-[#76B900]/50 text-[#76B900] rounded-lg text-xs font-semibold transition-colors hover:bg-[#76B900]/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 btn-hover">
+            <template v-if="testingApiKey">
+              <div class="w-3.5 h-3.5 border-2 border-[#76B900] border-t-transparent rounded-full animate-spin"></div>
+              <span>测试中…</span>
+            </template>
+            <template v-else>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span>连通测试</span>
+            </template>
+          </button>
+          <!-- 测试结果 -->
+          <div v-if="apiKeyTestResult" class="mt-2 p-2 rounded-lg text-xs"
+            :class="apiKeyTestResult.success ? 'bg-green-900/30 border border-green-700/50 text-green-300' : 'bg-red-900/30 border border-red-700/50 text-red-300'">
+            <div class="flex items-center gap-1.5">
+              <svg v-if="apiKeyTestResult.success" class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              <svg v-else class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              <span v-if="apiKeyTestResult.success">连通成功 · {{ apiKeyTestResult.latency_ms }}ms</span>
+              <span v-else>{{ apiKeyTestResult.error }}</span>
+            </div>
+          </div>
         </div>
 
         <!-- 示例代码展示区 -->
@@ -550,13 +651,45 @@
               : 'px-4 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg transition-colors'">
             📋 PRD 工作台
           </button>
+          <button @click="switchMainTab('mlops')"
+            :class="mainTab === 'mlops'
+              ? 'px-4 py-1.5 text-sm font-medium text-[#76B900] bg-[#76B900]/10 rounded-lg transition-colors'
+              : 'px-4 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg transition-colors'">
+            📊 MLOps Dashboard
+          </button>
         </div>
 
         <div class="ml-auto flex items-center gap-4">
+          <!-- 硬件加速状态徽章 -->
+          <span v-if="hardwareAcceleration === 'cuda' && accelerationMode === 'hybrid_acceleration'"
+            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/10 text-green-500 border border-green-500/20">
+            🚀 GPU混合加速 ({{ gpuName }}, {{ gpuMemoryGb }}GB)
+          </span>
+          <span v-else-if="hardwareAcceleration === 'openvino_gpu' && accelerationMode === 'hybrid_acceleration'"
+            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-500 border border-blue-500/20">
+            ⚡ 核显混合加速
+          </span>
+          <span v-else-if="hardwareAcceleration === 'cuda' && accelerationMode === 'pure_cloud'"
+            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
+            🟡 GPU可用 (纯云端)
+          </span>
+          <span v-else
+            class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-500/10 text-slate-500 border border-slate-500/20">
+            ☁️ 纯云端模式
+          </span>
           <!-- 会话 ID 显示 -->
           <span v-if="sessionId" class="text-xs text-slate-400">
             会话：{{ sessionId.substring(0, 8) }}...
           </span>
+          <!-- HITL 待审批数量徽章 -->
+          <button v-if="pendingApprovalCount > 0" @click="showHitlModal = true"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:bg-amber-500/20 transition-colors btn-hover"
+            aria-label="查看待审批请求">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+            {{ pendingApprovalCount }} 待审批
+          </button>
           <!-- 清空对话按钮 -->
           <button v-if="messages.length > 0 && mainTab === 'chat'" @click="clearChat"
             class="text-xs text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 btn-hover"
@@ -599,6 +732,16 @@
           <!-- 消息列表 -->
           <div class="max-w-3xl mx-auto xl:max-w-4xl 2xl:max-w-5xl">
             <template v-for="(msg, idx) in messages" :key="idx">
+              <!-- 系统警告消息（Guardrails 阻断等） -->
+              <div v-if="msg.role === 'system' && msg.messageType === 'guardrail_warning'" class="flex justify-center msg-appear mb-4">
+                <div class="max-w-[90%] sm:max-w-[75%] flex items-center gap-3 px-5 py-3 rounded-xl border border-orange-500/30 bg-orange-500/10 dark:bg-orange-900/20 backdrop-blur-sm shadow-sm">
+                  <svg class="w-5 h-5 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                  </svg>
+                  <span class="text-sm font-medium text-orange-600 dark:text-orange-400">{{ msg.content }}</span>
+                </div>
+              </div>
+
               <!-- 用户消息 -->
               <div v-if="msg.role === 'user'" class="flex justify-end msg-appear mb-4">
                 <div class="max-w-[90%] sm:max-w-[75%] bg-gradient-to-r from-[#76B900] to-blue-500 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm shadow-sm min-w-[60px]">
@@ -644,15 +787,36 @@
                     </tool-call-step-card>
                   </template>
 
+                  <!-- 知识图谱可视化（仅在 search_knowledge_graph 工具返回图谱数据时展示） -->
+                  <knowledge-graph-viz
+                    v-if="msg.intermediateSteps && msg.intermediateSteps.some(s => s.tool_name === 'search_knowledge_graph' && s.knowledge_graph)"
+                    :graph-data="extractKnowledgeGraph(msg.intermediateSteps)">
+                  </knowledge-graph-viz>
+
                   <!-- AI 回答内容 -->
                   <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                     <div v-if="msg.answerFormat === 'markdown'" class="msg-content text-sm text-slate-700 dark:text-slate-200" v-html="renderMarkdown(msg.content)"></div>
                     <div v-else class="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{{ msg.content }}</div>
                     <!-- 耗时信息 -->
-                    <div v-if="msg.totalDurationMs" class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-400">
-                      总耗时 {{ msg.totalDurationMs }}ms
+                    <div v-if="msg.totalDurationMs || hasRerankInfo(msg)" class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-400">
+                      <span v-if="msg.totalDurationMs">总耗时 {{ msg.totalDurationMs }}ms</span>
+                      <template v-for="(step, si) in (msg.intermediateSteps || [])" :key="si">
+                        <span v-if="step.tool_name === 'search_internal_documents' && step.rerank_duration_ms > 0" class="ml-2">
+                          🔍 内部检索完成 (精排耗时: {{ Math.round(step.rerank_duration_ms) }}ms | {{ step.rerank_device === 'cuda' ? 'GPU加速' : step.rerank_device === 'openvino_gpu' ? '核显加速' : 'CPU' }})
+                        </span>
+                      </template>
                     </div>
                   </div>
+
+                  <!-- 相关推荐模块 -->
+                  <recommendation-panel
+                    v-if="extractRecommendations(msg.intermediateSteps).length > 0"
+                    :recommendations="extractRecommendations(msg.intermediateSteps)"
+                    :is-loading="false"
+                    :is-timeout="false"
+                    :error-message="''"
+                    @item-click="handleRecommendationClick">
+                  </recommendation-panel>
                 </div>
               </div>
             </template>
@@ -776,6 +940,21 @@
             @export-word="exportPRDFromWorkbench"
             @update:prd-input="prdInput = $event">
           </prd-workbench>
+        </div>
+      </div>
+
+      <!-- ===== MLOps Dashboard 视图 ===== -->
+      <div v-show="mainTab === 'mlops'" class="flex-1 flex flex-col min-h-0 bg-slate-50 dark:bg-slate-900 overflow-hidden">
+        <div class="flex-1 flex flex-col min-h-0 p-6 overflow-y-auto">
+          <mlops-dashboard
+            :ab-config="mlopsAbConfig"
+            :eval-trend="mlopsEvalTrend"
+            :cache-stats="mlopsCacheStats"
+            :drift-status="mlopsDriftStatus"
+            :is-loading="mlopsLoading"
+            :error-message="mlopsError"
+            @refresh="loadMlopsData">
+          </mlops-dashboard>
         </div>
       </div>
     </main>
@@ -1839,12 +2018,656 @@ const PRDWorkbench = {
 };
 
 // ============================================================================
+// KnowledgeGraphViz 组件（知识图谱 Mermaid 可视化）
+// ============================================================================
+const KnowledgeGraphViz = {
+  name: 'KnowledgeGraphViz',
+  props: {
+    /** 图谱实体关系数据，格式: [{ from, to, relation }] */
+    graphData: { type: Array, default: () => [] }
+  },
+  setup(props) {
+    const mermaidLoading = ref(false);
+    const mermaidError = ref('');
+    const mermaidRendered = ref(false);
+    let _mermaidEl = null;
+    let _isUnmounted = false;
+
+    onBeforeUnmount(() => { _isUnmounted = true; });
+
+    function setMermaidRef(el) {
+      if (el) _mermaidEl = el;
+    }
+
+    /** 根据图谱数据生成 Mermaid 代码 */
+    const mermaidCode = computed(() => {
+      if (!props.graphData || props.graphData.length === 0) return '';
+      let code = 'graph LR\n';
+      props.graphData.forEach((edge, idx) => {
+        const from = (edge.from || 'A').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+        const to = (edge.to || 'B').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+        const relation = edge.relation || '关联';
+        code += `  ${from}[${edge.from || 'A'}]-->|${relation}|${to}[${edge.to || 'B'}]\n`;
+      });
+      return code;
+    });
+
+    async function tryRenderMermaid() {
+      if (mermaidRendered.value || !_mermaidEl || _isUnmounted) return;
+      if (!mermaidCode.value) return;
+      mermaidLoading.value = true;
+      mermaidError.value = '';
+      try {
+        const isDark = document.documentElement.classList.contains('dark');
+        const mermaidModule = await loadMermaidAsync(isDark ? 'dark' : 'default');
+        if (!_mermaidEl || _isUnmounted) return;
+        const id = 'kg-mermaid-' + Math.random().toString(36).substring(2, 9);
+        const { svg } = await mermaidModule.render(id, mermaidCode.value);
+        _mermaidEl.innerHTML = svg;
+        mermaidRendered.value = true;
+        mermaidLoading.value = false;
+      } catch (e) {
+        mermaidLoading.value = false;
+        mermaidError.value = '图谱渲染失败：' + (e.message || '未知错误');
+      }
+    }
+
+    function retryRenderMermaid() {
+      mermaidRendered.value = false;
+      mermaidError.value = '';
+      nextTick(() => tryRenderMermaid());
+    }
+
+    onMounted(() => {
+      if (props.graphData && props.graphData.length > 0) {
+        nextTick(() => tryRenderMermaid());
+      }
+    });
+
+    watch(() => props.graphData, () => {
+      mermaidRendered.value = false;
+      if (props.graphData && props.graphData.length > 0) {
+        nextTick(() => tryRenderMermaid());
+      }
+    }, { deep: true });
+
+    return {
+      mermaidLoading, mermaidError, mermaidRendered, mermaidCode,
+      setMermaidRef, tryRenderMermaid, retryRenderMermaid
+    };
+  },
+  template: `
+    <div v-if="graphData && graphData.length > 0" class="mt-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
+      <div class="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-700/50">
+        <span class="text-sm">🕸</span>
+        <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">知识图谱</span>
+        <span class="text-xs text-slate-400">{{ graphData.length }} 条关系</span>
+      </div>
+      <div class="p-4">
+        <div v-if="mermaidLoading" class="flex items-center justify-center gap-2 py-6">
+          <div class="w-4 h-4 border-2 border-[#76B900] border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-xs text-slate-400 dark:text-slate-500">加载图谱引擎中...</span>
+        </div>
+        <div v-if="mermaidError" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+          <p class="text-xs text-red-500 dark:text-red-400">{{ mermaidError }}</p>
+          <button @click="retryRenderMermaid" class="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 mt-1 underline">重试</button>
+        </div>
+        <div class="mermaid-container flex justify-center" :ref="el => setMermaidRef(el)"></div>
+      </div>
+    </div>
+  `
+};
+
+// ============================================================================
+// RecommendationPanel 组件（相关推荐模块）
+// ============================================================================
+const RecommendationPanel = {
+  name: 'RecommendationPanel',
+  props: {
+    /** 推荐结果列表，格式: [{ title, summary, source, score, document_name }] */
+    recommendations: { type: Array, default: () => [] },
+    /** 是否加载中 */
+    isLoading: { type: Boolean, default: false },
+    /** 是否超时 */
+    isTimeout: { type: Boolean, default: false },
+    /** 错误信息 */
+    errorMessage: { type: String, default: '' }
+  },
+  emits: ['item-click'],
+  setup(props, { emit }) {
+    /** 处理推荐项点击 */
+    function handleItemClick(item, index) {
+      emit('item-click', { item, index });
+    }
+
+    /** 格式化相似度分数 */
+    function formatScore(score) {
+      if (score === null || score === undefined) return '';
+      return (score * 100).toFixed(0) + '%';
+    }
+
+    /** 获取分数颜色类 */
+    function getScoreColorClass(score) {
+      if (score === null || score === undefined) return 'text-slate-400';
+      if (score >= 0.8) return 'text-green-500';
+      if (score >= 0.6) return 'text-blue-500';
+      return 'text-slate-400';
+    }
+
+    return {
+      handleItemClick,
+      formatScore,
+      getScoreColorClass
+    };
+  },
+  template: `
+    <div v-if="recommendations.length > 0 && !isTimeout && !errorMessage"
+      class="mt-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden">
+      <!-- 标题栏 -->
+      <div class="flex items-center gap-2 px-4 py-2.5 border-b border-slate-200 dark:border-slate-700/50 bg-slate-100/50 dark:bg-slate-700/30">
+        <svg class="w-4 h-4 text-[#76B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M-.01 15h.01"/>
+        </svg>
+        <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">📚 相关推荐</span>
+        <span class="text-xs text-slate-400 dark:text-slate-500">{{ recommendations.length }} 条相关文档</span>
+      </div>
+
+      <!-- 推荐列表 -->
+      <div class="p-3 space-y-2">
+        <div v-for="(item, idx) in recommendations" :key="idx"
+          @click="handleItemClick(item, idx)"
+          class="group bg-white dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600/50 rounded-lg p-3 hover:border-[#76B900]/50 dark:hover:border-[#76B900]/30 hover:shadow-sm transition-all cursor-pointer">
+          <!-- 标题行 -->
+          <div class="flex items-start gap-2 mb-1.5">
+            <span class="text-xs font-bold text-[#76B900] flex-shrink-0">{{ idx + 1 }}.</span>
+            <h4 class="text-sm font-medium text-slate-700 dark:text-slate-200 line-clamp-1 flex-1 group-hover:text-[#76B900] dark:group-hover:text-[#76B900] transition-colors">
+              {{ item.title || item.document_name || '未命名文档' }}
+            </h4>
+            <!-- 相似度分数 -->
+            <span v-if="item.score || item.similarity_score"
+              :class="getScoreColorClass(item.score || item.similarity_score)"
+              class="text-xs font-semibold flex-shrink-0">
+              {{ formatScore(item.score || item.similarity_score) }}
+            </span>
+          </div>
+
+          <!-- 摘要 -->
+          <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 pl-4">
+            {{ item.summary || item.snippet || '暂无摘要' }}
+          </p>
+
+          <!-- 来源标签 -->
+          <div v-if="item.source || item.department" class="flex items-center gap-2 mt-2 pl-4">
+            <span v-if="item.source" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-500 dark:text-blue-400 border border-blue-500/20">
+              {{ item.source }}
+            </span>
+            <span v-if="item.department" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/20">
+              {{ item.department }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 加载中状态 -->
+    <div v-else-if="isLoading && !isTimeout"
+      class="mt-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl p-4">
+      <div class="flex items-center gap-3">
+        <div class="w-4 h-4 border-2 border-[#76B900] border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-xs text-slate-500 dark:text-slate-400">正在加载相关推荐...</span>
+      </div>
+    </div>
+  `
+};
+
+// ============================================================================
+// MLOpsDashboard 组件（MLOps 监控面板）
+// ============================================================================
+const MLOpsDashboard = {
+  name: 'MLOpsDashboard',
+  props: {
+    abConfig: { type: Object, default: () => null },
+    evalTrend: { type: Array, default: () => [] },
+    cacheStats: { type: Object, default: () => null },
+    driftStatus: { type: Object, default: () => null },
+    isLoading: { type: Boolean, default: false },
+    errorMessage: { type: String, default: '' }
+  },
+  emits: ['refresh'],
+  setup(props, { emit }) {
+    const evalChartRef = ref(null);
+    const cacheChartRef = ref(null);
+    let evalChartInstance = null;
+    let cacheChartInstance = null;
+
+    /** 初始化评估趋势图 */
+    function initEvalChart() {
+      if (!evalChartRef.value || !props.evalTrend || props.evalTrend.length === 0) return;
+      
+      if (evalChartInstance) {
+        evalChartInstance.destroy();
+      }
+
+      const isDark = document.documentElement.classList.contains('dark');
+      const labels = props.evalTrend.map((item, idx) => item.timestamp || `T${idx + 1}`);
+      const faithfulnessData = props.evalTrend.map(item => item.faithfulness || 0);
+      const relevancyData = props.evalTrend.map(item => item.answer_relevancy || 0);
+      const precisionData = props.evalTrend.map(item => item.context_precision || 0);
+      const recallData = props.evalTrend.map(item => item.context_recall || 0);
+
+      evalChartInstance = new Chart(evalChartRef.value, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Faithfulness',
+              data: faithfulnessData,
+              borderColor: '#76B900',
+              backgroundColor: 'rgba(118, 185, 0, 0.1)',
+              tension: 0.3,
+              fill: false
+            },
+            {
+              label: 'Answer Relevancy',
+              data: relevancyData,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              tension: 0.3,
+              fill: false
+            },
+            {
+              label: 'Context Precision',
+              data: precisionData,
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              tension: 0.3,
+              fill: false
+            },
+            {
+              label: 'Context Recall',
+              data: recallData,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              tension: 0.3,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                color: isDark ? '#cbd5e1' : '#475569',
+                font: { size: 11 }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: isDark ? '#94a3b8' : '#64748b', font: { size: 10 } },
+              grid: { color: isDark ? '#334155' : '#e2e8f0' }
+            },
+            y: {
+              min: 0,
+              max: 1,
+              ticks: { color: isDark ? '#94a3b8' : '#64748b', font: { size: 10 } },
+              grid: { color: isDark ? '#334155' : '#e2e8f0' }
+            }
+          }
+        }
+      });
+    }
+
+    /** 初始化缓存比例图 */
+    function initCacheChart() {
+      if (!cacheChartRef.value || !props.cacheStats) return;
+      
+      if (cacheChartInstance) {
+        cacheChartInstance.destroy();
+      }
+
+      const isDark = document.documentElement.classList.contains('dark');
+      const hitCount = props.cacheStats.cache_hit_total || 0;
+      const missCount = props.cacheStats.cache_miss_total || 0;
+
+      cacheChartInstance = new Chart(cacheChartRef.value, {
+        type: 'doughnut',
+        data: {
+          labels: ['Cache Hit', 'Cache Miss'],
+          datasets: [{
+            data: [hitCount, missCount],
+            backgroundColor: ['#76B900', '#f59e0b'],
+            borderColor: isDark ? '#1e293b' : '#ffffff',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                color: isDark ? '#cbd5e1' : '#475569',
+                font: { size: 11 }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    /** 格式化百分比 */
+    function formatPercent(value) {
+      if (value === null || value === undefined) return 'N/A';
+      return (value * 100).toFixed(1) + '%';
+    }
+
+    /** 获取漂移状态样式 */
+    function getDriftStatusClass(status) {
+      const map = {
+        normal: 'bg-green-500/10 text-green-500 border-green-500/30',
+        degraded: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30',
+        unavailable: 'bg-red-500/10 text-red-500 border-red-500/30'
+      };
+      return map[status] || 'bg-slate-500/10 text-slate-500 border-slate-500/30';
+    }
+
+    /** 获取漂移状态文本 */
+    function getDriftStatusText(status) {
+      const map = {
+        normal: '正常',
+        degraded: '降级',
+        unavailable: '不可用'
+      };
+      return map[status] || '未知';
+    }
+
+    onMounted(() => {
+      nextTick(() => {
+        initEvalChart();
+        initCacheChart();
+      });
+    });
+
+    watch(() => props.evalTrend, () => {
+      nextTick(() => initEvalChart());
+    }, { deep: true });
+
+    watch(() => props.cacheStats, () => {
+      nextTick(() => initCacheChart());
+    }, { deep: true });
+
+    onBeforeUnmount(() => {
+      if (evalChartInstance) evalChartInstance.destroy();
+      if (cacheChartInstance) cacheChartInstance.destroy();
+    });
+
+    return {
+      evalChartRef,
+      cacheChartRef,
+      formatPercent,
+      getDriftStatusClass,
+      getDriftStatusText
+    };
+  },
+  template: `
+    <div class="space-y-6">
+      <!-- 标题栏 -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-[#76B900]/10 dark:bg-[#76B900]/20 flex items-center justify-center">
+            <svg class="w-5 h-5 text-[#76B900]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-lg font-semibold text-slate-800 dark:text-slate-100">MLOps Dashboard</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400">A/B 测试、评估趋势、缓存监控、漂移检测</p>
+          </div>
+        </div>
+        <button @click="$emit('refresh')"
+          :disabled="isLoading"
+          class="px-4 py-2 bg-[#76B900] hover:bg-[#8ed113] text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 btn-hover">
+          <svg v-if="isLoading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          刷新数据
+        </button>
+      </div>
+
+      <!-- 错误提示 -->
+      <div v-if="errorMessage"
+        class="bg-red-500/10 border border-red-500/30 text-red-500 rounded-xl px-4 py-3 text-sm flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+        </svg>
+        {{ errorMessage }}
+      </div>
+
+      <!-- 加载状态 -->
+      <div v-if="isLoading && !abConfig && !evalTrend.length && !cacheStats && !driftStatus"
+        class="flex items-center justify-center py-12">
+        <div class="w-8 h-8 border-2 border-[#76B900] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+
+      <!-- Dashboard 网格布局 -->
+      <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- A/B 测试配置卡片 -->
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+          <div class="flex items-center gap-2 px-5 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            <span class="text-sm">🧪</span>
+            <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">A/B 测试配置</span>
+          </div>
+          <div class="p-5">
+            <div v-if="!abConfig" class="text-center py-8 text-slate-400 dark:text-slate-500">
+              <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              <p class="text-xs">数据加载失败</p>
+            </div>
+            <div v-else class="space-y-4">
+              <!-- Bucket 分配比例 -->
+              <div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Bucket 分配比例</div>
+                <div class="space-y-2">
+                  <div v-for="bucket in (abConfig.buckets || [])" :key="bucket.id"
+                    class="flex items-center gap-3">
+                    <div class="flex-1">
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-slate-700 dark:text-slate-200">{{ bucket.name }}</span>
+                        <span class="text-xs text-slate-500">{{ (bucket.ratio * 100).toFixed(0) }}%</span>
+                      </div>
+                      <div class="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div class="h-full bg-[#76B900] rounded-full transition-all" :style="{ width: (bucket.ratio * 100) + '%' }"></div>
+                    </div>
+                  </div>
+
+                  <!-- 相关推荐模块 -->
+                  <recommendation-panel
+                    v-if="extractRecommendations(msg.intermediateSteps).length > 0"
+                    :recommendations="extractRecommendations(msg.intermediateSteps)"
+                    :is-loading="false"
+                    :is-timeout="false"
+                    :error-message="''"
+                    @item-click="handleRecommendationClick">
+                  </recommendation-panel>
+                </div>
+              </div>
+              </div>
+              <!-- 策略描述 -->
+              <div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">策略描述</div>
+                <div class="space-y-1.5">
+                  <div v-for="bucket in (abConfig.buckets || [])" :key="bucket.id"
+                    class="flex items-start gap-2 text-xs">
+                    <span class="text-[#76B900] font-medium">{{ bucket.name }}:</span>
+                    <span class="text-slate-600 dark:text-slate-300">{{ bucket.strategy || '默认策略' }}</span>
+                  </div>
+                </div>
+              </div>
+              <!-- 实时流量 -->
+              <div v-if="abConfig.traffic_info">
+                <div class="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">实时流量分配</div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2.5">
+                    <div class="text-xs text-slate-500 dark:text-slate-400">当前请求</div>
+                    <div class="text-lg font-bold text-slate-800 dark:text-slate-100">{{ abConfig.traffic_info.current_requests || 0 }}</div>
+                  </div>
+                  <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2.5">
+                    <div class="text-xs text-slate-500 dark:text-slate-400">活跃 Bucket</div>
+                    <div class="text-lg font-bold text-[#76B900]">{{ abConfig.traffic_info.active_bucket || '-' }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 评估得分趋势图卡片 -->
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+          <div class="flex items-center gap-2 px-5 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            <span class="text-sm">📈</span>
+            <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">评估得分趋势</span>
+          </div>
+          <div class="p-5">
+            <div v-if="!evalTrend || evalTrend.length === 0" class="text-center py-8 text-slate-400 dark:text-slate-500">
+              <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+              </svg>
+              <p class="text-xs">数据加载失败</p>
+            </div>
+            <div v-else class="h-64">
+              <canvas :ref="el => evalChartRef = el"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 缓存 Hit/Miss 比例卡片 -->
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+          <div class="flex items-center gap-2 px-5 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            <span class="text-sm">💾</span>
+            <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">缓存 Hit/Miss 比例</span>
+          </div>
+          <div class="p-5">
+            <div v-if="!cacheStats" class="text-center py-8 text-slate-400 dark:text-slate-500">
+              <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+              </svg>
+              <p class="text-xs">数据加载失败</p>
+            </div>
+            <div v-else class="space-y-4">
+              <div class="h-48">
+                <canvas :ref="el => cacheChartRef = el"></canvas>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2.5">
+                  <div class="text-xs text-slate-500 dark:text-slate-400">Hit 总数</div>
+                  <div class="text-lg font-bold text-[#76B900]">{{ cacheStats.cache_hit_total || 0 }}</div>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2.5">
+                  <div class="text-xs text-slate-500 dark:text-slate-400">Miss 总数</div>
+                  <div class="text-lg font-bold text-amber-500">{{ cacheStats.cache_miss_total || 0 }}</div>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2.5">
+                  <div class="text-xs text-slate-500 dark:text-slate-400">Hit Rate</div>
+                  <div class="text-lg font-bold text-slate-800 dark:text-slate-100">
+                    {{ cacheStats.cache_hit_total + cacheStats.cache_miss_total > 0 
+                      ? ((cacheStats.cache_hit_total / (cacheStats.cache_hit_total + cacheStats.cache_miss_total)) * 100).toFixed(1) + '%' 
+                      : '0%' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 漂移检测状态卡片 -->
+        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
+          <div class="flex items-center gap-2 px-5 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+            <span class="text-sm">🔍</span>
+            <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">漂移检测状态</span>
+          </div>
+          <div class="p-5">
+            <div v-if="!driftStatus" class="text-center py-8 text-slate-400 dark:text-slate-500">
+              <svg class="w-8 h-8 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+              </svg>
+              <p class="text-xs">数据加载失败</p>
+            </div>
+            <div v-else class="space-y-4">
+              <!-- 运行状态 -->
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">运行状态</span>
+                <span :class="getDriftStatusClass(driftStatus.status)" class="px-3 py-1 rounded-full text-xs font-semibold border">
+                  {{ getDriftStatusText(driftStatus.status) }}
+                </span>
+              </div>
+              <!-- 最近一次检测结果 -->
+              <div v-if="driftStatus.last_check">
+                <div class="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">最近一次检测结果</div>
+                <div class="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 space-y-2">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-500 dark:text-slate-400">检测时间</span>
+                    <span class="text-slate-700 dark:text-slate-200">{{ driftStatus.last_check.timestamp || '-' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-500 dark:text-slate-400">漂移分数</span>
+                    <span :class="driftStatus.last_check.drift_score > 0.5 ? 'text-red-500' : 'text-green-500'" class="font-semibold">
+                      {{ driftStatus.last_check.drift_score !== undefined ? driftStatus.last_check.drift_score.toFixed(3) : 'N/A' }}
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-500 dark:text-slate-400">是否漂移</span>
+                    <span :class="driftStatus.last_check.is_drifted ? 'text-red-500' : 'text-green-500'" class="font-semibold">
+                      {{ driftStatus.last_check.is_drifted ? '是' : '否' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <!-- 告警历史 -->
+              <div v-if="driftStatus.alerts && driftStatus.alerts.length > 0">
+                <div class="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">告警历史 (最近 {{ Math.min(driftStatus.alerts.length, 5) }} 条)</div>
+                <div class="space-y-2 max-h-32 overflow-y-auto">
+                  <div v-for="alert in driftStatus.alerts.slice(0, 5)" :key="alert.id"
+                    class="flex items-start gap-2 bg-red-500/5 dark:bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                    <svg class="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                    </svg>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-xs text-red-500 dark:text-red-400 font-medium truncate">{{ alert.message || '漂移告警' }}</div>
+                      <div class="text-[10px] text-slate-400 dark:text-slate-500">{{ alert.timestamp || '-' }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="text-center py-3 text-xs text-slate-400 dark:text-slate-500">
+                暂无告警
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+};
+
+// ============================================================================
 // Vue 3 应用（Composition API - v2 扩展）
 // ============================================================================
 const app = createApp({
   components: {
     ToolCallStepCard, ToastItem, WaitingProgress, FeatureShowcaseCard,
-    AgentReasoningPanel, SystemArchPanel, RAGSourceTracker, PRDWorkbench
+    AgentReasoningPanel, SystemArchPanel, RAGSourceTracker, PRDWorkbench,
+    KnowledgeGraphViz, MLOpsDashboard, RecommendationPanel
   },
   setup() {
     // ---- 原有响应式状态 ----
@@ -1865,6 +2688,8 @@ const app = createApp({
     const modelNameInput = ref('deepseek-ai/deepseek-v4-flash');
     const showApiKey = ref(false);
     const isDark = ref(false);
+    const testingApiKey = ref(false);
+    const apiKeyTestResult = ref(null);
     const sidebarOpen = ref(false);
     const copyButtonText = ref('复制');
     const providerSelect = ref('nim');
@@ -1891,6 +2716,30 @@ const app = createApp({
     const actualRagEngine = ref('builtin');     // 响应中实际使用的引擎
     const isFallback = ref(false);              // 是否发生降级
     const fallbackMessage = ref('');            // 降级提示信息
+
+    // ---- HITL 审批相关状态 ----
+    const hitlApprovals = reactive([]);         // 待审批列表
+    const showHitlModal = ref(false);           // 弹窗显示状态
+    const currentApproval = ref(null);          // 当前审批项
+    const hitlProcessing = ref(false);          // 审批操作处理中
+    const hitlResultMessage = ref('');          // 审批结果反馈消息
+
+    /** 待审批数量计算属性 */
+    const pendingApprovalCount = computed(() => hitlApprovals.filter(a => a.status === 'pending').length);
+
+    // ---- MLOps Dashboard 状态 ----
+    const mlopsAbConfig = ref(null);           // A/B 测试配置
+    const mlopsEvalTrend = ref([]);            // 评估得分趋势
+    const mlopsCacheStats = ref(null);         // 缓存统计
+    const mlopsDriftStatus = ref(null);        // 漂移检测状态
+    const mlopsLoading = ref(false);           // 加载状态
+    const mlopsError = ref('');                // 错误消息
+
+    // ---- 推荐模块状态 ----
+    const recommendationLoading = ref(false);        // 推荐加载中
+    const recommendationTimeout = ref(false);        // 推荐超时
+    const recommendationError = ref('');             // 推荐错误信息
+    const RECOMMENDATION_TIMEOUT_MS = 5000;          // 推荐超时阈值（5秒）
 
     // Toast 管理器状态
     const toasts = reactive([]);
@@ -1920,6 +2769,12 @@ const app = createApp({
     const liveStatusText = ref('');              // 实时状态文本（SSE 驱动）
     const liveToolResults = reactive([]);        // 实时工具结果（SSE 驱动）
     const liveRetrievalSources = reactive([]);   // 实时检索来源（SSE 驱动）
+    const hardwareAcceleration = ref('cpu');      // 硬件加速状态：cuda / openvino_gpu / cpu
+    const accelerationMode = ref('pure_cloud');   // 加速模式：pure_cloud / hybrid_acceleration
+    const gpuName = ref('');                      // GPU 名称
+    const gpuMemoryGb = ref(0);                   // GPU 显存大小 (GB)
+    const availableOptimizations = ref([]);       // 可用优化列表
+    const localModelsLoaded = ref(false);         // 本地模型是否已加载
     let currentStreamId = ref(null);             // 当前 SSE 流 ID
     let sseAbortController = null;               // SSE 请求 AbortController
 
@@ -2294,6 +3149,38 @@ print(completion.choices[0].message.content)`;
       } catch (e) { showToast('error', '保存失败：' + e.message); }
     }
 
+    async function testApiKey() {
+      const key = apiKeyInput.value.trim();
+      const modelName = modelNameInput.value.trim();
+      if (!key) {
+        showToast('warning', '请先输入 API Key');
+        return;
+      }
+      testingApiKey.value = true;
+      apiKeyTestResult.value = null;
+      try {
+        const res = await fetch('/api/v1/config/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: providerSelect.value,
+            api_key: key,
+            model_name: modelName || (providerSelect.value === 'xfyun' ? '4.0Ultra' : providerSelect.value === 'zhipu' ? 'glm-4.7-flash' : 'deepseek-ai/deepseek-v4-flash'),
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          apiKeyTestResult.value = data;
+        } else {
+          apiKeyTestResult.value = { success: false, error: data.detail || '未知错误' };
+        }
+      } catch (e) {
+        apiKeyTestResult.value = { success: false, error: '网络错误：' + e.message };
+      } finally {
+        testingApiKey.value = false;
+      }
+    }
+
     async function loadDocCount() {
       try {
         const res = await fetch('/api/v1/docs/count');
@@ -2326,7 +3213,8 @@ print(completion.choices[0].message.content)`;
         const res = await fetch('/api/v1/docs/upload', { method: 'POST', body: fd });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          showToast('success', `文档 ${data.filename} 上传成功，入库 ${data.chunks_added} 个文本块`);
+          const modeLabel = data.acceleration_mode === 'hybrid_acceleration' ? '混合加速' : '纯云端';
+          showToast('success', `文档 ${data.filename} 上传成功，入库 ${data.chunks_added} 个文本块 | 耗时: ${(data.processing_time_ms / 1000).toFixed(1)}s (模式: ${modeLabel})`);
           loadDocCount();
         } else {
           showToast('error', '上传失败：' + (data.detail || '未知错误'));
@@ -2531,6 +3419,28 @@ print(completion.choices[0].message.content)`;
           liveStatusText.value = '历史会话加载失败，使用新会话';
           break;
 
+        case 'hitl_approval_required':
+          // HITL 审批请求：弹出审批弹窗
+          currentApproval.value = data;
+          showHitlModal.value = true;
+          hitlApprovals.push({ ...data, status: 'pending' });
+          liveStatusText.value = `等待人工审批: ${data.tool_name || '未知工具'}`;
+          break;
+
+        case 'guardrail_loop_detected':
+          // Guardrails 阻断：在聊天界面添加系统警告消息
+          messages.push({
+            role: 'system',
+            content: '检测到系统处理异常，已终止操作',
+            messageType: 'guardrail_warning'
+          });
+          liveStatusText.value = 'Guardrails 已终止操作';
+          // 将所有 running 步骤标记为 error
+          liveSteps.forEach(step => {
+            if (step.status === 'running') step.status = 'error';
+          });
+          break;
+
         default:
           // 未知事件类型，忽略
           break;
@@ -2558,7 +3468,10 @@ print(completion.choices[0].message.content)`;
       try {
         const res = await fetch('/api/v1/chat/stream', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-key'
+          },
           body: JSON.stringify({
             query,
             session_id: threadId,
@@ -2719,7 +3632,10 @@ print(completion.choices[0].message.content)`;
         try {
           res = await fetch('/api/v1/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer test-key'
+            },
             body: JSON.stringify({
               query: query,
               session_id: sessionId.value,
@@ -3028,7 +3944,10 @@ print(completion.choices[0].message.content)`;
       try {
         const res = await fetch('/api/v1/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-key'
+          },
           body: JSON.stringify({
             query: `请帮我生成以下需求的PRD文档：${prdInput.value}`,
             session_id: sessionId.value
@@ -3122,17 +4041,256 @@ print(completion.choices[0].message.content)`;
       console.log('Source clicked:', source);
     }
 
+    /** 检查消息是否包含 rerank 性能信息 */
+    function hasRerankInfo(msg) {
+      if (!msg.intermediateSteps) return false;
+      return msg.intermediateSteps.some(
+        step => step.tool_name === 'search_internal_documents' && step.rerank_duration_ms > 0
+      );
+    }
+
+    // ---- HITL 审批方法 ----
+
+    /** 批准 HITL 审批 */
+    async function approveHitl(approvalId) {
+      hitlProcessing.value = true;
+      hitlResultMessage.value = '';
+      try {
+        const res = await fetch(`/api/v1/hitl/approvals/${approvalId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          // 更新审批状态
+          const approval = hitlApprovals.find(a => a.id === approvalId);
+          if (approval) approval.status = 'approved';
+          hitlResultMessage.value = '✅ 审批已通过，工具将继续执行';
+          showToast('success', '审批已通过');
+        } else {
+          hitlResultMessage.value = '❌ 审批失败：' + (data.detail || '未知错误');
+          showToast('error', '审批失败：' + (data.detail || '未知错误'));
+        }
+      } catch (e) {
+        hitlResultMessage.value = '❌ 网络错误：' + e.message;
+        showToast('error', '审批请求失败：' + e.message);
+      } finally {
+        hitlProcessing.value = false;
+        // 2秒后关闭弹窗
+        setTimeout(() => {
+          showHitlModal.value = false;
+          hitlResultMessage.value = '';
+        }, 2000);
+      }
+    }
+
+    /** 拒绝 HITL 审批 */
+    async function rejectHitl(approvalId) {
+      hitlProcessing.value = true;
+      hitlResultMessage.value = '';
+      try {
+        const res = await fetch(`/api/v1/hitl/approvals/${approvalId}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const approval = hitlApprovals.find(a => a.id === approvalId);
+          if (approval) approval.status = 'rejected';
+          hitlResultMessage.value = '🚫 已拒绝执行，Agent 将重新规划';
+          showToast('warning', '已拒绝审批');
+        } else {
+          hitlResultMessage.value = '❌ 拒绝失败：' + (data.detail || '未知错误');
+          showToast('error', '拒绝失败：' + (data.detail || '未知错误'));
+        }
+      } catch (e) {
+        hitlResultMessage.value = '❌ 网络错误：' + e.message;
+        showToast('error', '拒绝请求失败：' + e.message);
+      } finally {
+        hitlProcessing.value = false;
+        setTimeout(() => {
+          showHitlModal.value = false;
+          hitlResultMessage.value = '';
+        }, 2000);
+      }
+    }
+
+    /** 关闭 HITL 弹窗 */
+    function closeHitlModal() {
+      showHitlModal.value = false;
+      hitlResultMessage.value = '';
+    }
+
+    /** 格式化 JSON 用于展示 */
+    function formatHitlJson(obj) {
+      try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+    }
+
+    /** 从 intermediate_steps 中提取知识图谱数据 */
+    function extractKnowledgeGraph(intermediateSteps) {
+      if (!intermediateSteps || !Array.isArray(intermediateSteps)) return [];
+      const kgStep = intermediateSteps.find(
+        s => s.tool_name === 'search_knowledge_graph' && s.knowledge_graph
+      );
+      if (!kgStep || !kgStep.knowledge_graph) return [];
+      // knowledge_graph 格式: [{ from, to, relation }] 或 { edges: [{ from, to, relation }] }
+      if (Array.isArray(kgStep.knowledge_graph)) {
+        return kgStep.knowledge_graph;
+      }
+      if (kgStep.knowledge_graph.edges && Array.isArray(kgStep.knowledge_graph.edges)) {
+        return kgStep.knowledge_graph.edges;
+      }
+      return [];
+    }
+
+    /** 从 intermediate_steps 中提取推荐结果 */
+    function extractRecommendations(intermediateSteps) {
+      if (!intermediateSteps || !Array.isArray(intermediateSteps)) return [];
+      
+      // 查找 get_recommendations 工具调用结果
+      const recommendStep = intermediateSteps.find(
+        s => s.tool_name === 'get_recommendations' && s.tool_result
+      );
+      
+      if (!recommendStep) return [];
+      
+      // 解析推荐结果
+      let recommendations = [];
+      
+      // 格式1: tool_result 直接是数组
+      if (Array.isArray(recommendStep.tool_result)) {
+        recommendations = recommendStep.tool_result;
+      }
+      // 格式2: tool_result 是对象，包含 recommendations 字段
+      else if (recommendStep.tool_result && typeof recommendStep.tool_result === 'object') {
+        if (Array.isArray(recommendStep.tool_result.recommendations)) {
+          recommendations = recommendStep.tool_result.recommendations;
+        } else if (Array.isArray(recommendStep.tool_result.results)) {
+          recommendations = recommendStep.tool_result.results;
+        } else if (Array.isArray(recommendStep.tool_result.items)) {
+          recommendations = recommendStep.tool_result.items;
+        }
+      }
+      // 格式3: tool_result 是字符串，尝试 JSON 解析
+      else if (typeof recommendStep.tool_result === 'string') {
+        try {
+          const parsed = JSON.parse(recommendStep.tool_result);
+          if (Array.isArray(parsed)) {
+            recommendations = parsed;
+          } else if (parsed && Array.isArray(parsed.recommendations)) {
+            recommendations = parsed.recommendations;
+          }
+        } catch {
+          // 解析失败，返回空数组
+          return [];
+        }
+      }
+      
+      // 过滤并规范化推荐项
+      return recommendations.filter(item => {
+        // 必须有标题或文档名
+        return item && (item.title || item.document_name || item.name);
+      }).map(item => ({
+        title: item.title || item.document_name || item.name || '未命名文档',
+        summary: item.summary || item.snippet || item.abstract || item.content || '',
+        source: item.source || item.source_type || '',
+        department: item.department || '',
+        score: item.score || item.similarity_score || item.rerank_score || null,
+        document_name: item.document_name || item.title || item.name || '',
+        snippet: item.snippet || item.summary || ''
+      }));
+    }
+
+    /** 处理推荐项点击 */
+    function handleRecommendationClick({ item, index }) {
+      // 可扩展：跳转到文档详情或高亮来源
+      console.log('Recommendation clicked:', item, index);
+      showToast('info', `查看推荐文档: ${item.title}`);
+    }
+
+    // ---- MLOps Dashboard 方法 ----
+
+    /** 加载 MLOps 数据 */
+    async function loadMlopsData() {
+      mlopsLoading.value = true;
+      mlopsError.value = '';
+
+      // 并行加载所有 MLOps 数据
+      const [abRes, evalRes, cacheRes, driftRes] = await Promise.allSettled([
+        fetch('/api/v1/mlops/ab-test/config').then(r => r.ok ? r.json() : Promise.reject('A/B 配置加载失败')),
+        fetch('/api/v1/mlops/eval/trend').then(r => r.ok ? r.json() : Promise.reject('评估趋势加载失败')),
+        fetch('/api/v1/mlops/cache/stats').then(r => r.ok ? r.json() : Promise.reject('缓存统计加载失败')),
+        fetch('/api/v1/mlops/drift/status').then(r => r.ok ? r.json() : Promise.reject('漂移状态加载失败'))
+      ]);
+
+      // 处理 A/B 配置
+      if (abRes.status === 'fulfilled') {
+        mlopsAbConfig.value = abRes.value;
+      } else {
+        mlopsAbConfig.value = null;
+      }
+
+      // 处理评估趋势
+      if (evalRes.status === 'fulfilled') {
+        mlopsEvalTrend.value = evalRes.value || [];
+      } else {
+        mlopsEvalTrend.value = [];
+      }
+
+      // 处理缓存统计
+      if (cacheRes.status === 'fulfilled') {
+        mlopsCacheStats.value = cacheRes.value;
+      } else {
+        mlopsCacheStats.value = null;
+      }
+
+      // 处理漂移状态
+      if (driftRes.status === 'fulfilled') {
+        mlopsDriftStatus.value = driftRes.value;
+      } else {
+        mlopsDriftStatus.value = null;
+      }
+
+      // 检查是否有任何失败
+      const failedApis = [];
+      if (abRes.status === 'rejected') failedApis.push('A/B 配置');
+      if (evalRes.status === 'rejected') failedApis.push('评估趋势');
+      if (cacheRes.status === 'rejected') failedApis.push('缓存统计');
+      if (driftRes.status === 'rejected') failedApis.push('漂移状态');
+
+      if (failedApis.length > 0) {
+        mlopsError.value = `部分数据加载失败: ${failedApis.join(', ')}`;
+      }
+
+      mlopsLoading.value = false;
+    }
+
     // ---- 生命周期钩子 ----
-    onMounted(() => {
+    onMounted(async () => {
       initTheme();
       loadApiKeyStatus();
       loadDocCount();
       setupScrollListener();
       checkBlueprintAvailability();
+      // 获取硬件状态
+      try {
+        const hwResp = await fetch('/api/v1/hardware/status');
+        const hwData = await hwResp.json();
+        hardwareAcceleration.value = hwData.device || 'cpu';
+        accelerationMode.value = hwData.mode || 'pure_cloud';
+        gpuName.value = hwData.gpu_name || '';
+        gpuMemoryGb.value = hwData.gpu_memory_gb || 0;
+        availableOptimizations.value = hwData.available_optimizations || [];
+        localModelsLoaded.value = hwData.local_models_loaded || false;
+      } catch (e) {
+        console.warn('获取硬件状态失败', e);
+      }
       // 初始化 Mock 数据
       const providerNameMap = { nim: 'NVIDIA NIM', xfyun: '讯飞星辰', zhipu: '智谱AI' };
       archNodes.value = mockArchNodes.map(n => n.id === 'llm_provider' ? { ...n, name: providerNameMap[providerSelect.value] || n.name } : n);
       archEdges.value = mockArchEdges;
+      // 加载 MLOps 数据
+      loadMlopsData();
     });
 
     onUnmounted(() => {
@@ -3164,7 +4322,7 @@ print(completion.choices[0].message.content)`;
       // 原有扩展
       modelNameInput, showApiKey, isDark, sidebarOpen,
       copyButtonText, exampleCode, providerSelect,
-      loadApiKeyStatus, saveApiKey, loadDocCount,
+      loadApiKeyStatus, saveApiKey, testApiKey, loadDocCount,
       uploadFile, sendMessage, sendExample,
       retrySendMessage, clearChat, renderMarkdown, exportPrd,
       copyExampleCode, toggleTheme,
@@ -3181,13 +4339,31 @@ print(completion.choices[0].message.content)`;
       isStreaming, sseEvents,
       liveSteps, liveProgress, liveStatusText,
       liveToolResults, liveRetrievalSources,
+      // 硬件加速状态
+      hardwareAcceleration, accelerationMode, gpuName, gpuMemoryGb, availableOptimizations, localModelsLoaded,
       // v2 新增方法
       handleInputKeydown, autoResizeTextarea,
       switchSidebarTab, switchMainTab, toggleRightPanel,
       extractRAGSources, buildReasoningSteps,
       generatePRD, exportPRDFromWorkbench, parsePRDSections,
       refreshArchStatus, handleSourceClick,
-      checkBlueprintAvailability
+      checkBlueprintAvailability,
+      // 硬件加速辅助方法
+      hasRerankInfo,
+      // 连通测试
+      testingApiKey, apiKeyTestResult,
+      // HITL 审批相关
+      hitlApprovals, showHitlModal, currentApproval,
+      hitlProcessing, hitlResultMessage, pendingApprovalCount,
+      approveHitl, rejectHitl, closeHitlModal, formatHitlJson,
+      // 知识图谱辅助方法
+      extractKnowledgeGraph,
+      // 推荐模块相关
+      extractRecommendations, handleRecommendationClick,
+      recommendationLoading, recommendationTimeout, recommendationError,
+      // MLOps Dashboard 相关
+      mlopsAbConfig, mlopsEvalTrend, mlopsCacheStats, mlopsDriftStatus,
+      mlopsLoading, mlopsError, loadMlopsData
     };
   }
 });

@@ -1,5 +1,7 @@
 """协议接口模块，定义核心组件的类型协议。"""
 
+from __future__ import annotations
+
 from typing import Any, Protocol
 
 

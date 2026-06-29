@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import random
@@ -18,6 +20,7 @@ from app.exceptions import (
     ToolExecutionError,
 )
 from app.models.schemas import ChatResponse, SourceReference, ToolCallStep
+from app.observability.metrics import LLM_CALL_COUNT, LLM_CALL_LATENCY
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +169,7 @@ def _extract_sources(result: str, tool_name: str) -> list[SourceReference]:
         if metadata_match:
             try:
                 rag_metadata = json.loads(metadata_match.group(1))
-            except json.JSONDecodeError, ValueError:
+            except (json.JSONDecodeError, ValueError):
                 logger.warning("RAG_METADATA 解析失败，使用默认提取")
 
     sources: list[SourceReference] = []
@@ -212,9 +215,9 @@ class AgentChain:
         logger.info("AgentChain 初始化完成，可用工具：%s", list(tools_by_name.keys()))
 
     def _invoke_with_retry(self, messages: list[Any], max_retries: int | None = None) -> AIMessage:
-        if max_retries is None:
-            from app.core.config import settings
+        from app.core.config import settings
 
+        if max_retries is None:
             max_retries = settings.RETRY_MAX_ATTEMPTS
 
         limiter = get_rate_limiter()
@@ -225,7 +228,16 @@ class AgentChain:
             wait = 0.0
             for attempt in range(max_retries):
                 try:
-                    return self.llm_with_tools.invoke(messages)
+                    llm_start = time.monotonic()
+                    result = self.llm_with_tools.invoke(messages)
+                    llm_duration = time.monotonic() - llm_start
+                    LLM_CALL_COUNT.labels(
+                        provider=settings.PROVIDER, model="unknown", status="success"
+                    ).inc()
+                    LLM_CALL_LATENCY.labels(provider=settings.PROVIDER, model="unknown").observe(
+                        llm_duration
+                    )
+                    return result
                 except Exception as exc:
                     err_str = str(exc)
                     if ErrorCode.RATE_LIMIT in err_str and attempt < max_retries - 1:
@@ -236,15 +248,24 @@ class AgentChain:
                         )  # 1~5s, 1~10s, 1~20s, 1~40s, 1~60s
                         wait = base_wait + jitter
                         logger.warning("429 限流，%.1f 秒后重试（第 %d 次）", wait, attempt + 1)
+                        LLM_CALL_COUNT.labels(
+                            provider=settings.PROVIDER, model="unknown", status="error"
+                        ).inc()
                         time.sleep(wait)
                         limiter.wait()
                     elif ErrorCode.RATE_LIMIT in err_str:
+                        LLM_CALL_COUNT.labels(
+                            provider=settings.PROVIDER, model="unknown", status="error"
+                        ).inc()
                         raise RateLimitExceededError(
                             message="LLM 调用频率超限，重试次数已耗尽",
                             retry_after=int(wait) if wait > 0 else None,
                             details=str(exc),
                         ) from exc
                     else:
+                        LLM_CALL_COUNT.labels(
+                            provider=settings.PROVIDER, model="unknown", status="error"
+                        ).inc()
                         raise LLMInvocationError(message="LLM 调用失败", details=str(exc)) from exc
         finally:
             limiter.release()
@@ -323,7 +344,25 @@ class AgentChain:
             logger.info("使用已有会话：%s", session_id)
 
         messages = self.sessions[session_id]
-        messages.append(HumanMessage(content=query))
+
+        # 安全扫描：Prompt Injection 检测 + 输入清洗
+        sanitized_query = query
+        if settings.ENABLE_PROMPT_GUARD:
+            from app.security.prompt_guard import sanitize_input
+
+            sanitized_query, risk_level, _ = sanitize_input(query)
+            if risk_level.value in ("medium", "high"):
+                logger.warning("检测到 Prompt 注入风险：risk=%s", risk_level.value)
+
+        # 安全扫描：PII 检测（输入侧仅记录，不脱敏）
+        if settings.ENABLE_PII_GUARD:
+            from app.security.pii_guard import scan_llm_input
+
+            _, pii_report = scan_llm_input(query)
+            if pii_report:
+                logger.warning("用户输入包含 PII: types=%s", list(pii_report.keys()))
+
+        messages.append(HumanMessage(content=sanitized_query))
         logger.info("用户输入：%s", query)
 
         all_tools_used: list[str] = []
@@ -349,6 +388,15 @@ class AgentChain:
 
         content = ai_message.content
         answer = str(content) if content else ""
+
+        # 安全扫描：PII 输出脱敏
+        if settings.ENABLE_PII_GUARD:
+            from app.security.pii_guard import scan_llm_output
+
+            answer, pii_report = scan_llm_output(answer)
+            if pii_report:
+                logger.warning("LLM 输出包含 PII（已脱敏）: types=%s", list(pii_report.keys()))
+
         logger.info("最终回答生成完成，长度：%d 字符", len(answer))
 
         if len(messages) > settings.SESSION_MAX_MESSAGES:

@@ -1,0 +1,30 @@
+# Terraform 状态文件
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform 变量文件（可能包含敏感信息）
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Terraform 锁文件
+.terraform.lock.hcl
+
+# Terraform 插件目录
+.terraform/
+
+# Terraform 计划文件
+*.tfplan
+
+# Terraform 日志
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI 配置文件
+.terraformrc
+terraform.rc

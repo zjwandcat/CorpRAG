@@ -110,7 +110,10 @@ def _infer_department_from_path(file_path: Path) -> str:
 
 
 def load_directory(directory: Path, department: str | None = None) -> list[Document]:
-    """加载目录下所有支持的文件。
+    """加载目录下所有支持的文件（递归扫描子目录）。
+
+    使用 rglob 递归扫描目录及其子目录中的所有文件，
+    确保 data/ 目录下的嵌套结构（如 data/reports/）也能被索引。
 
     Args:
         directory: 目录路径
@@ -124,10 +127,10 @@ def load_directory(directory: Path, department: str | None = None) -> list[Docum
         return []
 
     documents: list[Document] = []
-    for file_path in sorted(directory.iterdir()):
-        if file_path.suffix.lower() not in SUPPORTED_FORMATS:
-            continue
+    for file_path in sorted(directory.rglob("*")):
         if file_path.is_dir():
+            continue
+        if file_path.suffix.lower() not in SUPPORTED_FORMATS:
             continue
         try:
             docs = load_single_file(file_path, department)

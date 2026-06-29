@@ -1,3 +1,10 @@
+"""枚举定义模块
+
+定义应用程序中使用的所有枚举类型，包括模型供应商、模型名称、
+工具名称、文档格式、审查类型、严重程度、MCP Server 名称等。
+所有枚举均继承自 StrEnum，支持字符串比较和序列化。
+"""
+
 from enum import StrEnum
 
 
@@ -33,6 +40,9 @@ class ToolName(StrEnum):
     GENERATE_PRD_DOCUMENT = "generate_prd_document"
     GENERATE_FLOWCHART_CODE = "generate_flowchart_code"
     GENERATE_HTML_PROTOTYPE = "generate_html_prototype"
+    RECOMMEND_SIMILAR = "recommend_similar_documents"
+    PREDICT_INTENT = "predict_user_intent"
+    SEARCH_KNOWLEDGE_GRAPH = "search_knowledge_graph"
 
 
 class DocumentFormat(StrEnum):
@@ -115,19 +125,150 @@ class SSEEventType(StrEnum):
     MEMORY_LOAD_FAILED = "memory_load_failed"
     STREAM_END = "stream_end"
     STREAM_ERROR = "stream_error"
+    HITL_APPROVAL_REQUIRED = "hitl_approval_required"
+    HITL_APPROVED = "hitl_approved"
+    HITL_REJECTED = "hitl_rejected"
+    GUARDRAIL_LOOP_DETECTED = "guardrail_loop_detected"
+
+
+class ReviewType(StrEnum):
+    """审查类型枚举"""
+
+    FULL = "full"
+    SECURITY = "security"
+    ARCHITECTURE = "architecture"
+    PERFORMANCE = "performance"
+    STYLE = "style"
+
+
+class ReviewStatus(StrEnum):
+    """审查状态枚举"""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+
+
+class Severity(StrEnum):
+    """问题严重程度枚举"""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class MCPServerName(StrEnum):
+    """MCP Server 名称枚举"""
+
+    GITHUB = "github"
+    FILESYSTEM = "filesystem"
+    DATABASE = "database"
+    WEBSEARCH = "websearch"
+
+
+class ReviewEventType(StrEnum):
+    """审查 SSE 事件类型枚举"""
+
+    REVIEW_START = "review_start"
+    WORKER_START = "worker_start"
+    WORKER_RESULT = "worker_result"
+    WORKER_TIMEOUT = "worker_timeout"
+    WORKER_ERROR = "worker_error"
+    SUMMARY_START = "summary_start"
+    REVIEW_END = "review_end"
+
+
+class HITLStatus(StrEnum):
+    """HITL 审批状态枚举"""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class GuardrailAction(StrEnum):
+    """护栏动作枚举"""
+
+    ALLOW = "allow"
+    WARN = "warn"
+    BLOCK = "block"
+
+
+class DriftDetectionMethod(StrEnum):
+    """漂移检测方法枚举"""
+
+    KS_TEST = "ks_test"
+    MMD = "mmd"
+
+
+class DriftStatus(StrEnum):
+    """漂移检测状态枚举"""
+
+    NORMAL = "normal"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+
+
+class ABBucket(StrEnum):
+    """A/B 测试分桶枚举"""
+
+    BUCKET_A = "bucket_a"
+    BUCKET_B = "bucket_b"
+
+
+class RAGStrategy(StrEnum):
+    """RAG 策略枚举"""
+
+    SELF_HOSTED_RAG = "self_hosted_rag"
+    BLUEPRINT_RAG = "blueprint_rag"
+
+
+class IntentLabel(StrEnum):
+    """意图标签枚举"""
+
+    REIMBURSEMENT = "报销咨询"
+    LEAVE_PROCESS = "请假流程"
+    IT_SUPPORT = "IT支持"
+    HR_MANAGEMENT = "人事管理"
+    FINANCIAL_MANAGEMENT = "财务管理"
+    OTHER = "其他"
+
+
+class MLOpsEventType(StrEnum):
+    """MLOps 事件类型枚举"""
+
+    DRIFT_ALERT = "drift_alert"
+    EVAL_COMPLETE = "eval_complete"
+    AB_CONFIG_UPDATED = "ab_config_updated"
 
 
 __all__ = [
+    "ABBucket",
     "APIPath",
     "Department",
     "DocumentFormat",
+    "DriftDetectionMethod",
+    "DriftStatus",
     "ErrorCode",
+    "GuardrailAction",
+    "HITLStatus",
+    "IntentLabel",
+    "MCPServerName",
+    "MLOpsEventType",
     "ModelName",
     "ModelProvider",
     "RAGEngine",
+    "RAGStrategy",
     "ResultType",
+    "ReviewEventType",
+    "ReviewStatus",
+    "ReviewType",
     "SSEEventType",
     "ServiceStatus",
+    "Severity",
     "ToolName",
     "UserCommand",
 ]

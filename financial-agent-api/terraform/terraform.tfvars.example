@@ -1,0 +1,79 @@
+# Financial Agent API - Terraform 变量配置示例
+# 复制此文件为 terraform.tfvars 并填入实际值
+
+# ============================================================================
+# 基础配置
+# ============================================================================
+region      = "us-east-1"
+project_name = "financial-agent-api"
+environment = "prod"
+
+# ============================================================================
+# VPC 配置
+# ============================================================================
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+enable_nat_gateway   = true
+
+# ============================================================================
+# ECS 配置
+# ============================================================================
+cluster_name    = "financial-agent-cluster"
+container_name  = "financial-agent-api"
+container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/financial-agent-api:latest"
+container_port  = 8000
+cpu             = 1024
+memory          = 2048
+desired_count   = 3
+
+# ============================================================================
+# Auto Scaling
+# ============================================================================
+enable_autoscaling  = true
+min_capacity        = 2
+max_capacity        = 10
+cpu_target_value    = 70
+memory_target_value = 80
+
+# ============================================================================
+# Load Balancer
+# ============================================================================
+enable_https              = true
+certificate_arn           = "arn:aws:acm:us-east-1:123456789012:certificate/xxxx-xxxx-xxxx"
+enable_deletion_protection = true
+
+# ============================================================================
+# 应用环境变量
+# ============================================================================
+nim_base_url         = "https://integrate.api.nvidia.com/v1"
+mlflow_tracking_uri  = "http://mlflow.internal:5000"
+chroma_host          = "chromadb.internal"
+chroma_port          = 8000
+log_level            = "INFO"
+
+# ============================================================================
+# 敏感信息（通过环境变量注入）
+# ============================================================================
+# 设置方式：export TF_VAR_nvidia_api_key="your-key"
+# 或在 terraform.tfvars 中直接设置（不推荐提交到版本控制）
+nvidia_api_key = ""  # 从环境变量 TF_VAR_nvidia_api_key 读取
+openai_api_key = ""  # 从环境变量 TF_VAR_openai_api_key 读取
+database_url   = ""  # 从环境变量 TF_VAR_database_url 读取
+
+# ============================================================================
+# S3 配置（可选）
+# ============================================================================
+enable_s3_access  = true
+s3_bucket_name    = "financial-agent-data"
+
+# ============================================================================
+# DynamoDB 配置（可选）
+# ============================================================================
+enable_dynamodb_access = true
+dynamodb_table_name    = "financial-agent-sessions"
+
+# ============================================================================
+# SSM Parameter Store（可选）
+# ============================================================================
+enable_ssm_parameters = true

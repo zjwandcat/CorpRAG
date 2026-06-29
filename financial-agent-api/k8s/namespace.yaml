@@ -1,0 +1,11 @@
+# ============================================================================
+# 金融研报智能体 API - Kubernetes Namespace
+# ============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-platform
+  labels:
+    app.kubernetes.io/name: financial-agent-api
+    app.kubernetes.io/part-of: agent-platform
+    app.kubernetes.io/managed-by: kubectl

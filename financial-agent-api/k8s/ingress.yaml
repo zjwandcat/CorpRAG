@@ -1,0 +1,55 @@
+# ============================================================================
+# 金融研报智能体 API - Ingress + TLS 配置
+# ============================================================================
+# 使用 Nginx Ingress Controller 暴露服务
+# TLS 证书需提前创建或使用 cert-manager 自动签发
+#
+# 前置条件：
+#   1. 集群中已安装 Nginx Ingress Controller
+#   2. TLS 证书已创建（见下方 tls-secret 说明）
+#
+# 创建自签名测试证书：
+#   openssl req -x509 -nodes -days 365 \
+#     -newkey rsa:2048 \
+#     -keyout tls.key -out tls.crt \
+#     -subj "/CN=agent-platform.local"
+#   kubectl create secret tls agent-platform-tls \
+#     --namespace agent-platform \
+#     --key=tls.key --cert=tls.crt
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agent-api-ingress
+  namespace: agent-platform
+  labels:
+    app: agent-api
+    app.kubernetes.io/name: financial-agent-api
+    app.kubernetes.io/part-of: agent-platform
+    app.kubernetes.io/component: api
+  annotations:
+    # Nginx Ingress Controller 注解
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # SSE (Server-Sent Events) 支持：禁用响应缓冲
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # SSE 长连接超时设置（默认 60s 过短，设为 300s）
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # SSE 需要 chunked transfer encoding
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - agent-platform.local
+      secretName: agent-platform-tls
+  rules:
+    - host: agent-platform.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agent-api-service
+                port:
+                  number: 8001

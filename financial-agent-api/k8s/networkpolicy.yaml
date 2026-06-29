@@ -1,0 +1,46 @@
+# ============================================================================
+# 金融研报智能体 API - NetworkPolicy（网络策略）
+# ============================================================================
+# 限制 API Pod 的 Egress 出站流量，仅允许：
+#   1. DNS 解析（UDP 53）
+#   2. HTTPS 外部请求（TCP 443）— LLM API 调用
+#   3. ChromaDB 内部通信（TCP 8000）— 向量数据库查询
+#
+# 注意：应用 NetworkPolicy 前请确认集群网络插件支持（如 Calico、Cilium）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-api-egress
+  namespace: agent-platform
+  labels:
+    app: agent-api
+    app.kubernetes.io/name: financial-agent-api
+    app.kubernetes.io/part-of: agent-platform
+    app.kubernetes.io/component: api
+spec:
+  podSelector:
+    matchLabels:
+      app: agent-api
+  policyTypes:
+    - Egress
+  egress:
+    # 规则 1：DNS 解析（允许访问集群 DNS 服务）
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # 规则 2：HTTPS 外部请求（LLM API 调用、Web 搜索等）
+    - ports:
+        - protocol: TCP
+          port: 443
+
+    # 规则 3：ChromaDB 内部通信（同一 namespace 内的向量数据库）
+    - ports:
+        - protocol: TCP
+          port: 8000
+      to:
+        - podSelector:
+            matchLabels:
+              app: chromadb

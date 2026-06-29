@@ -129,23 +129,22 @@ class Settings:
 
     # LlamaIndex 专用向量库目录
     CHROMA_DB_DIR: Path = Path(os.getenv("CHROMA_DB_DIR", "./chroma_db_li"))
-    # 指向共享的知识库目录
-    _SHARED_DATA_ROOT = (
-        Path(__file__).resolve().parent.parent.parent.parent
-        / "financial-agent-api"
-        / "data"
-    )
+    # 项目根目录
+    _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+    # 共享数据根目录（兼容 financial-agent-api 的数据）
+    _SHARED_DATA_ROOT = _PROJECT_ROOT / "financial-agent-api" / "data"
+    # 主知识库目录（项目根目录的 data/，包含所有子目录的文件）
     KNOWLEDGE_DIR: Path = Path(
         os.getenv(
             "KNOWLEDGE_DIR",
-            str(_SHARED_DATA_ROOT / "knowledge_base"),
+            str(_PROJECT_ROOT / "data"),
         )
     )
     # CSV 数据目录
     CSV_DIR: Path = Path(os.getenv("CSV_DIR", str(_SHARED_DATA_ROOT / "csv")))
     # 研报目录
     REPORTS_DIR: Path = Path(
-        os.getenv("REPORTS_DIR", str(_SHARED_DATA_ROOT / "reports"))
+        os.getenv("REPORTS_DIR", str(_PROJECT_ROOT / "data" / "reports"))
     )
 
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "500"))
@@ -167,6 +166,17 @@ class Settings:
     MAX_TOOL_ROUNDS: int = int(os.getenv("MAX_TOOL_ROUNDS", "10"))
 
     SESSION_MAX_MESSAGES: int = int(os.getenv("SESSION_MAX_MESSAGES", "100"))
+
+    # ---- Reranker 精排配置 ----
+    RERANKER_ENABLED: bool = os.getenv("RERANKER_ENABLED", "true").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    RERANKER_MODEL: str = os.getenv(
+        "RERANKER_MODEL", "BAAI/bge-reranker-base"
+    )
+    RERANKER_TOP_N: int = int(os.getenv("RERANKER_TOP_N", "3"))
 
 
 settings = Settings()

@@ -6,11 +6,16 @@
 - NoOp 降级模式（Reranker 不可用时返回原始排序）
 """
 
+from __future__ import annotations
+
 import logging
+import time
 from dataclasses import dataclass
 
 import requests
 from langchain_core.documents import Document
+
+from app.core.logging_config import log_function_call
 
 __all__ = ["RerankResult", "Reranker"]
 
@@ -113,6 +118,8 @@ class Reranker:
         Returns:
             精排后的 RerankResult 列表，降级时返回原始文档列表（rerank_score=0.0）
         """
+        rerank_start = time.monotonic()
+
         # 空结果处理：documents 为空时直接返回空列表
         if not documents:
             return []
@@ -120,17 +127,40 @@ class Reranker:
         # 降级模式：Reranker 不可用时返回原始文档列表
         if not self.is_available():
             logger.warning("Reranker 不可用，使用原始排序（降级模式）")
+            duration_ms = (time.monotonic() - rerank_start) * 1000
+            log_function_call(
+                func_name="rerank",
+                duration_ms=duration_ms,
+                result_summary=f"降级模式，文档数={len(documents)}，top_n={top_n}",
+            )
             return [
                 RerankResult(index=i, relevance_score=0.0, document=doc)
                 for i, doc in enumerate(documents[:top_n])
             ]
 
         if self._provider == "zhipu":
-            return self._rerank_zhipu(query, documents, top_n)
+            results = self._rerank_zhipu(query, documents, top_n)
         elif self._provider == "nim" and self._client is not None:
-            return self._rerank_nvidia(query, documents, top_n)
+            results = self._rerank_nvidia(query, documents, top_n)
         else:
-            return self._rerank_fallback(documents, top_n)
+            results = self._rerank_fallback(documents, top_n)
+
+        duration_ms = (time.monotonic() - rerank_start) * 1000
+        rerank_scores = [round(r.relevance_score, 4) for r in results]
+        logger.info(
+            "Reranker 精排完成，provider=%s，返回 %d 个结果，耗时=%.1fms，分数=%s",
+            self._provider,
+            len(results),
+            duration_ms,
+            rerank_scores,
+        )
+        log_function_call(
+            func_name="rerank",
+            duration_ms=duration_ms,
+            result_summary=f"provider={self._provider}，结果数={len(results)}，分数={rerank_scores}",
+        )
+
+        return results
 
     def _rerank_zhipu(
         self, query: str, documents: list[Document], top_n: int
@@ -182,7 +212,13 @@ class Reranker:
             results.sort(key=lambda r: r.relevance_score, reverse=True)
             results = results[:top_n]
 
-            logger.info("智谱 Reranker 精排完成，返回 %d 个结果", len(results))
+            # 记录每个文档的精排分数
+            rerank_scores = [round(r.relevance_score, 4) for r in results]
+            logger.info(
+                "智谱 Reranker 精排完成，返回 %d 个结果，分数=%s",
+                len(results),
+                rerank_scores,
+            )
             return results
 
         except requests.Timeout:
@@ -217,7 +253,14 @@ class Reranker:
             results.sort(key=lambda r: r.relevance_score, reverse=True)
             results = results[:top_n]
 
-            logger.info("Reranker 精排完成，返回 %d 个结果（top %d）", len(results), top_n)
+            # 记录每个文档的精排分数
+            rerank_scores = [round(r.relevance_score, 4) for r in results]
+            logger.info(
+                "Reranker 精排完成，返回 %d 个结果（top %d），分数=%s",
+                len(results),
+                top_n,
+                rerank_scores,
+            )
             return results
 
         except Exception as exc:

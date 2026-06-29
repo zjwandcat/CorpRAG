@@ -1,12 +1,18 @@
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
 __all__ = [
     "ChatRequest",
     "ChatResponse",
+    "DocumentProcessingPerformance",
+    "HardwareInfo",
+    "HardwareStatusResponse",
     "HealthResponse",
+    "OptimizedUploadResponse",
     "PRDExportRequest",
+    "RetrievalPerformance",
+    "RetrievalTestResponse",
     "SourceReference",
     "ToolCallStep",
     "UploadRequest",
@@ -97,6 +103,21 @@ class ToolCallStep(BaseModel):
             examples=["success"],
         ),
     ]
+    rerank_duration_ms: Annotated[
+        float,
+        Field(
+            default=0.0,
+            ge=0.0,
+            description="Reranker 精排耗时（毫秒），0 表示未执行精排",
+        ),
+    ] = 0.0
+    rerank_device: Annotated[
+        Literal["cuda", "openvino_gpu", "cpu", ""],
+        Field(
+            default="",
+            description="Reranker 运行设备，空字符串表示未执行精排",
+        ),
+    ] = ""
 
 
 class ChatRequest(BaseModel):
@@ -172,14 +193,99 @@ class UploadResponse(BaseModel):
     chunks_added: Annotated[int, Field(ge=0, description="添加到向量库的文本块数量")]
     message: Annotated[str, Field(description="操作结果消息")]
     department: Annotated[str, Field(default="通用", description="文档所属部门")]
+    processing_time_ms: Annotated[
+        float,
+        Field(
+            default=0.0,
+            ge=0.0,
+            description="文档处理耗时（毫秒），包含解析+向量化",
+        ),
+    ] = 0.0
+    acceleration_mode: Annotated[
+        Literal["pure_cloud", "hybrid_acceleration"],
+        Field(
+            default="pure_cloud",
+            description="加速模式",
+        ),
+    ] = "pure_cloud"
 
 
 class HealthResponse(BaseModel):
     status: Annotated[str, Field(description="服务状态")]
     vectorstore_count: Annotated[int, Field(ge=0, description="向量库中的文档数量")]
     model_name: Annotated[str, Field(description="当前使用的模型名称")]
+    acceleration_mode: Annotated[
+        Literal["pure_cloud", "hybrid_acceleration"],
+        Field(
+            default="pure_cloud",
+            description="加速模式：pure_cloud=纯云端，hybrid_acceleration=混合加速",
+        ),
+    ] = "pure_cloud"
+    local_models_loaded: Annotated[
+        bool,
+        Field(
+            default=False,
+            description="本地模型（Embedding）是否已成功加载",
+        ),
+    ] = False
 
 
 class PRDExportRequest(BaseModel):
     feature_name: Annotated[str, Field(description="功能名称")]
     content: Annotated[str, Field(description="PRD 文档内容（Markdown 格式）")]
+
+
+class DocumentProcessingPerformance(BaseModel):
+    """文档处理性能指标"""
+    ocr_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="OCR 识别耗时（毫秒）")]
+    cleaning_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="文本清洗耗时（毫秒）")]
+    slicing_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="文本切片耗时（毫秒）")]
+    total_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="总处理耗时（毫秒）")]
+    device: Annotated[str, Field(default="cpu", description="处理设备：cuda/openvino_gpu/cpu")]
+
+
+class RetrievalPerformance(BaseModel):
+    """检索性能指标"""
+    bm25_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="BM25 检索耗时（毫秒）")]
+    vector_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="向量检索耗时（毫秒）")]
+    rrf_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="RRF 融合耗时（毫秒）")]
+    reranker_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="Reranker 精排耗时（毫秒）")]
+    total_time_ms: Annotated[float, Field(default=0.0, ge=0.0, description="总检索耗时（毫秒）")]
+    device: Annotated[str, Field(default="cpu", description="检索设备：cuda/openvino_gpu/cpu")]
+    use_reranker: Annotated[bool, Field(default=False, description="是否使用了 Reranker")]
+
+
+class HardwareInfo(BaseModel):
+    """硬件信息"""
+    device: Annotated[Literal["cuda", "openvino_gpu", "cpu"], Field(description="计算设备类型")]
+    mode: Annotated[Literal["pure_cloud", "hybrid_acceleration"], Field(description="加速模式")]
+    gpu_name: Annotated[str, Field(default="", description="GPU 名称")]
+    gpu_memory_gb: Annotated[float, Field(default=0.0, ge=0.0, description="GPU 显存大小（GB）")]
+    available_optimizations: Annotated[list[str], Field(default_factory=list, description="可用优化功能列表")]
+
+
+class HardwareStatusResponse(BaseModel):
+    """硬件状态接口响应"""
+    device: Annotated[Literal["cuda", "openvino_gpu", "cpu"], Field(description="计算设备类型")]
+    mode: Annotated[Literal["pure_cloud", "hybrid_acceleration"], Field(description="加速模式")]
+    gpu_name: Annotated[str, Field(default="", description="GPU 名称")]
+    gpu_memory_gb: Annotated[float, Field(default=0.0, ge=0.0, description="GPU 显存大小（GB）")]
+    available_optimizations: Annotated[list[str], Field(default_factory=list, description="可用优化功能列表")]
+
+
+class OptimizedUploadResponse(BaseModel):
+    """优化文档上传接口响应"""
+    filename: Annotated[str, Field(description="上传的文件名")]
+    chunks_added: Annotated[int, Field(ge=0, description="添加到向量库的文本块数量")]
+    message: Annotated[str, Field(description="操作结果消息")]
+    department: Annotated[str, Field(default="通用", description="文档所属部门")]
+    processing_performance: Annotated[DocumentProcessingPerformance, Field(description="文档处理性能指标")]
+    hardware_info: Annotated[HardwareInfo, Field(description="硬件信息")]
+
+
+class RetrievalTestResponse(BaseModel):
+    """检索性能测试接口响应"""
+    query: Annotated[str, Field(description="查询文本")]
+    results: Annotated[list[dict[str, Any]], Field(default_factory=list, description="检索结果")]
+    performance: Annotated[RetrievalPerformance, Field(description="检索性能指标")]
+    hardware_info: Annotated[HardwareInfo, Field(description="硬件信息")]

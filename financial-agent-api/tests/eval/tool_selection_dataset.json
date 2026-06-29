@@ -1,0 +1,22 @@
+[
+  {"query": "张三的邮箱是什么", "expected_tool": "get_employee_info", "expected_args_hint": {"employee_name": "张三"}, "category": "employee"},
+  {"query": "公司报销流程是什么", "expected_tool": "search_internal_documents", "expected_args_hint": {"query": "报销流程"}, "category": "document"},
+  {"query": "2024年AI行业趋势", "expected_tool": "search_web", "expected_args_hint": {"query": "2024年AI行业趋势"}, "category": "web_search"},
+  {"query": "给李四发邮件提醒他开会", "expected_tool": "send_email_notification", "expected_args_hint": {"to_employee": "李四"}, "category": "email"},
+  {"query": "帮我写一个智能审批的PRD", "expected_tool": "generate_prd_document", "expected_args_hint": {"feature_name": "智能审批"}, "category": "pm_tool"},
+  {"query": "画一个请假流程图", "expected_tool": "generate_flowchart_code", "expected_args_hint": {"process_description": "请假流程"}, "category": "pm_tool"},
+  {"query": "生成一个报销页面的原型", "expected_tool": "generate_html_prototype", "expected_args_hint": {"page_description": "报销页面"}, "category": "pm_tool"},
+  {"query": "张三和研发中心是什么关系", "expected_tool": "search_knowledge_graph", "expected_args_hint": {"entity": "张三"}, "category": "knowledge_graph"},
+  {"query": "研发中心负责哪些项目", "expected_tool": "search_knowledge_graph", "expected_args_hint": {"entity": "研发中心"}, "category": "knowledge_graph"},
+  {"query": "请假制度怎么规定的", "expected_tool": "search_internal_documents", "expected_args_hint": {"query": "请假制度"}, "category": "document"},
+  {"query": "王五的职位是什么", "expected_tool": "get_employee_info", "expected_args_hint": {"employee_name": "王五"}, "category": "employee"},
+  {"query": "最新的大模型技术进展", "expected_tool": "search_web", "expected_args_hint": {"query": "大模型技术进展"}, "category": "web_search"},
+  {"query": "通知赵六提交周报", "expected_tool": "send_email_notification", "expected_args_hint": {"to_employee": "赵六"}, "category": "email"},
+  {"query": "帮我写一个自动化工单系统的需求文档", "expected_tool": "generate_prd_document", "expected_args_hint": {"feature_name": "自动化工单系统"}, "category": "pm_tool"},
+  {"query": "把审批流程画成流程图", "expected_tool": "generate_flowchart_code", "expected_args_hint": {"process_description": "审批流程"}, "category": "pm_tool"},
+  {"query": "做一个员工管理页面的原型", "expected_tool": "generate_html_prototype", "expected_args_hint": {"page_description": "员工管理页面"}, "category": "pm_tool"},
+  {"query": "财务部和哪些部门有协作关系", "expected_tool": "search_knowledge_graph", "expected_args_hint": {"entity": "财务部"}, "category": "knowledge_graph"},
+  {"query": "IT支持怎么联系", "expected_tool": "search_internal_documents", "expected_args_hint": {"query": "IT支持联系方式"}, "category": "document"},
+  {"query": "李四的部门是什么", "expected_tool": "get_employee_info", "expected_args_hint": {"employee_name": "李四"}, "category": "employee"},
+  {"query": "报销流程中财务部负责什么", "expected_tool": "search_knowledge_graph", "expected_args_hint": {"entity": "财务部", "relation": "负责"}, "category": "knowledge_graph"}
+]

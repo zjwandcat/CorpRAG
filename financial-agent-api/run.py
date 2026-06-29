@@ -12,6 +12,8 @@ from typing import Final
 
 import uvicorn
 
+from app.core.logging_config import setup_logging
+
 # ============================================================================
 # 模块级常量配置（使用 Final 确保不可变）
 # ============================================================================
@@ -47,6 +49,9 @@ def main() -> None:
     使用 uvicorn 运行应用，支持热重载功能。
     适用于开发环境，生产环境建议使用 gunicorn + uvicorn worker。
     """
+    # 初始化统一日志系统（文件轮转 + JSON 结构化 + 请求追踪）
+    setup_logging()
+
     uvicorn.run(
         APP_MODULE,  # FastAPI 应用实例
         host=HOST,  # 监听地址

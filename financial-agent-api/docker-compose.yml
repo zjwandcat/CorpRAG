@@ -7,13 +7,12 @@
 # │ 宿主机端口 │ 容器端口  │ 服务                      │
 # ├──────────┼──────────┼──────────────────────────┤
 # │ 8001     │ 8001     │ FastAPI 应用 (api)        │
-# │ 8002     │ 8000     │ NVIDIA NIM 大模型 (nim)   │
 # │ 8003     │ 8000     │ ChromaDB 向量数据库       │
+# │ 5000     │ 5000     │ MLflow 实验跟踪服务       │
 # └──────────┴──────────┴──────────────────────────┘
 #
-# 提示：如果用户本机已运行 NIM 服务，可以注释掉 nim 服务定义，
-#       并将 api 服务的 NIM_BASE_URL 环境变量改为：
-#       http://host.docker.internal:8000/v1
+# 提示：NIM 服务已切换为云端 NVIDIA NIM API，
+#       需要在 .env 文件中配置 NVIDIA_API_KEY
 # ============================================================================
 
 services:
@@ -29,19 +28,17 @@ services:
       - ./data:/app/data                  # 研报文件持久化（PDF/TXT 源文件）
       - ./chroma_db:/app/chroma_db        # 向量数据库持久化（ChromaDB 存储目录）
     environment:
-      # NIM 服务地址：通过 Docker 服务名 nim 访问容器内部 8000 端口
-      NIM_BASE_URL: http://nim:8000/v1
-      # 大语言模型名称（NIM 容器中加载的模型）
+      # NIM 服务地址：云端 NVIDIA NIM API 端点
+      NIM_BASE_URL: https://integrate.api.nvidia.com/v1
+      # 大语言模型名称（NIM 云端 API 支持的模型）
       NIM_MODEL_NAME: moonshotai/kimi-k2.6
-      # Embedding 模型名称（NIM 容器中加载的嵌入模型）
+      # Embedding 模型名称（NIM 云端 API 支持的嵌入模型）
       NIM_EMBEDDING_MODEL: nvidia/nv-embedqa-e5-v5
-      # NVIDIA API Key（本地 NIM 不需要真实 Key，但 LangChain 需要非空值）
-      NVIDIA_API_KEY: not-needed-for-local-nim
+      # NVIDIA API Key：从 .env 文件读取
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY}
       # 限速配置：每分钟允许的最大请求数
       RATE_LIMIT_RPM: "15"
     depends_on:
-      nim:                                # 依赖 NIM 服务先启动
-        condition: service_healthy        # 且 NIM 健康检查通过后才启动
       chromadb:                           # 依赖 ChromaDB 服务先启动
         condition: service_healthy        # 且 ChromaDB 健康检查通过后才启动
     restart: unless-stopped               # 非手动停止时自动重启（崩溃/重启机器）
@@ -55,39 +52,7 @@ services:
       start_period: 30s                   # 启动等待：容器启动后 30 秒才开始健康检查
 
   # ==========================================================================
-  # 服务 2：nim - NVIDIA NIM 大模型推理服务
-  # ==========================================================================
-  nim:
-    image: nvcr.io/nim/moonshotai/kimi-k2.6:latest  # NIM 官方镜像
-    container_name: nim-service           # 容器名称
-    ports:
-      - "8002:8000"                       # 宿主机 8002 -> 容器 8000（避免与 api 的 8001 冲突）
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia              # GPU 驱动：NVIDIA
-              count: all                  # 使用所有可用 GPU
-              capabilities: [gpu]         # 设备能力：GPU 计算
-    ipc: host                             # 共享主机 IPC 命名空间（多 GPU 通信需要）
-    shm_size: 32gb                        # 共享内存大小（大模型推理需要大量共享内存）
-    environment:
-      # NGC API Key：用于拉取 NIM 镜像和模型权重，从 .env 文件读取
-      NGC_API_KEY: ${NGC_API_KEY}
-    volumes:
-      - nim-cache:/opt/nim/.cache         # NIM 模型缓存持久化（避免每次重启重新下载）
-    restart: unless-stopped               # 非手动停止时自动重启
-    networks:
-      - agent-network                     # 加入自定义桥接网络
-    healthcheck:                          # NIM 健康检查
-      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]  # 检查模型列表接口
-      interval: 30s                       # 检查间隔
-      timeout: 10s                        # 超时时间
-      retries: 5                          # 重试次数（NIM 启动较慢，多给几次机会）
-      start_period: 60s                   # 启动等待（模型加载需要时间，给 60 秒）
-
-  # ==========================================================================
-  # 服务 3：chromadb - 独立向量数据库服务
+  # 服务 2：chromadb - 独立向量数据库服务
   # ==========================================================================
   chromadb:
     image: chromadb/chroma:latest         # ChromaDB 官方镜像
@@ -109,12 +74,27 @@ services:
       timeout: 5s                         # 超时时间
       retries: 3                          # 重试次数
 
+  # ==========================================================================
+  # 服务 3：mlflow - MLflow 实验跟踪服务
+  # ==========================================================================
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.18.0  # MLflow 官方镜像
+    container_name: mlflow-service        # 容器名称
+    ports:
+      - "5000:5000"                       # 宿主机 5000 -> 容器 5000
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts  # MLflow artifacts 持久化
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+    restart: unless-stopped               # 非手动停止时自动重启
+    networks:
+      - agent-network                     # 加入自定义桥接网络
+
 # ============================================================================
 # 顶层配置：数据卷定义
 # ============================================================================
 volumes:
-  nim-cache:                              # NIM 模型缓存卷（命名卷，Docker 自动管理）
   chromadb-data:                          # ChromaDB 数据卷（命名卷，Docker 自动管理）
+  mlflow_artifacts:                       # MLflow artifacts 数据卷（命名卷，Docker 自动管理）
 
 # ============================================================================
 # 顶层配置：网络定义

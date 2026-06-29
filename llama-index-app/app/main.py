@@ -25,7 +25,7 @@ from app.core.dependencies import get_index, update_api_key
 from app.core.enums import APIPath, ModelProvider, ServiceStatus
 from app.core.limiter import limiter
 from app.exceptions import AgentError
-from app.models.schemas import HealthResponse
+from app.models.schemas import HealthResponse, HardwareStatusResponse
 from app.rag.index_store import configure_embed_model, get_index_count
 
 logger = logging.getLogger(__name__)
@@ -185,8 +185,15 @@ async def health_check() -> HealthResponse:
         else settings.NIM_MODEL_NAME
     )
 
+    from app.core.hardware import hardware_manager
+    from app.rag.index_store import _embed_model_configured
+
     return HealthResponse(
-        status=ServiceStatus.OK, vectorstore_count=count, model_name=_current_model
+        status=ServiceStatus.OK,
+        vectorstore_count=count,
+        model_name=_current_model,
+        acceleration_mode=hardware_manager.mode,
+        local_models_loaded=_embed_model_configured,
     )
 
 
@@ -225,6 +232,21 @@ async def get_apikey_status() -> dict[str, bool | str]:
         "hint": masked,
         "model_name": model,
     }
+
+
+@app.get(f"{APIPath.API_V1}/hardware/status", response_model=HardwareStatusResponse, summary="硬件状态")
+async def hardware_status() -> HardwareStatusResponse:
+    """硬件状态接口，返回当前计算设备、加速模式和可用优化列表"""
+    from app.core.hardware import hardware_manager
+
+    config = hardware_manager.get_optimization_config()
+    return HardwareStatusResponse(
+        device=config["device"],
+        mode=config["mode"],
+        gpu_name=config["gpu_name"],
+        gpu_memory_gb=config["gpu_memory_gb"],
+        available_optimizations=config["available_optimizations"],
+    )
 
 
 @app.post(f"{APIPath.API_V1}/config/apikey", summary="保存 API Key 和模型名称")

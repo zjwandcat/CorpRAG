@@ -2,7 +2,7 @@
 name = "enterprise-knowledge-agent-api"
 version = "1.0.0"
 description = "企业内部办公知识库智能体 API 系统"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [
     "chromadb>=0.6",
@@ -14,14 +14,21 @@ dependencies = [
     "langchain-chroma>=0.2",
     "langchain-community>=0.3",
     "langchain-core>=0.3",
+    "langchain-huggingface>=0.1",
     "langchain-nvidia-ai-endpoints>=0.3",
+    "langchain-openai>=0.3",
     "langchain-text-splitters>=0.3",
+    "langgraph>=0.2",
+    "langgraph-checkpoint>=0.2",
+    "markdown>=3.5",
+    "numpy>=1.26",
     "pydantic>=2.10",
     "pypdf>=5.0",
     "python-docx>=1.0",
     "python-multipart>=0.0.20",
     "rank_bm25>=0.2",
     "requests>=2.32",
+    "sentence-transformers>=3.0",
     "slowapi>=0.1.9",
     "unstructured>=0.15",
     "uvicorn[standard]>=0.34",
@@ -35,7 +42,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py310"
 line-length = 100
 src = ["app", "scripts", "step1_agent.py", "step2_rag.py", "run.py"]
 
@@ -68,7 +75,7 @@ indent-style = "space"
 docstring-code-format = true
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

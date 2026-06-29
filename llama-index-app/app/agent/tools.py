@@ -25,6 +25,34 @@ from app.rag.index_store import hybrid_retrieve
 
 logger = logging.getLogger(__name__)
 
+# 演示用硬编码员工数据，未接入真实 OA 系统
+_DEMO_EMPLOYEES: dict[str, dict[str, str]] = {
+    "张三": {
+        "部门": "研发中心",
+        "职位": "高级工程师",
+        "邮箱": "zhangsan@company.com",
+        "电话": "13800001111",
+    },
+    "李四": {
+        "部门": "人事部",
+        "职位": "HR经理",
+        "邮箱": "lisi@company.com",
+        "电话": "13800002222",
+    },
+    "王五": {
+        "部门": "财务部",
+        "职位": "财务主管",
+        "邮箱": "wangwu@company.com",
+        "电话": "13800003333",
+    },
+    "赵六": {
+        "部门": "研发中心",
+        "职位": "产品经理",
+        "邮箱": "zhaoliu@company.com",
+        "电话": "13800004444",
+    },
+}
+
 __all__ = [
     "get_employee_info_tool",
     "make_generate_flowchart_code_tool",
@@ -82,7 +110,7 @@ def make_search_internal_documents_tool(index: VectorStoreIndex) -> FunctionTool
 
 
 def get_employee_info(employee_name: str) -> str:
-    """查询员工信息（模拟 OA 系统接口）。
+    """⚠️ 演示数据：使用硬编码员工信息，未接入真实 OA 系统。
 
     当用户询问某位员工的联系方式、职位、部门等信息时调用此工具。
 
@@ -90,41 +118,15 @@ def get_employee_info(employee_name: str) -> str:
         employee_name: 员工姓名，例如 "张三"
 
     Returns:
-        员工信息字符串，如果未找到则返回"查无此人"
+        员工信息字符串（包含演示数据标识），如果未找到则返回"查无此人"
     """
     logger.info("执行工具 get_employee_info，employee_name=%s", employee_name)
-    employees: dict[str, dict[str, str]] = {
-        "张三": {
-            "部门": "研发中心",
-            "职位": "高级工程师",
-            "邮箱": "zhangsan@company.com",
-            "电话": "13800001111",
-        },
-        "李四": {
-            "部门": "人事部",
-            "职位": "HR经理",
-            "邮箱": "lisi@company.com",
-            "电话": "13800002222",
-        },
-        "王五": {
-            "部门": "财务部",
-            "职位": "财务主管",
-            "邮箱": "wangwu@company.com",
-            "电话": "13800003333",
-        },
-        "赵六": {
-            "部门": "研发中心",
-            "职位": "产品经理",
-            "邮箱": "zhaoliu@company.com",
-            "电话": "13800004444",
-        },
-    }
-    info = employees.get(employee_name)
+    info = _DEMO_EMPLOYEES.get(employee_name)
     if info is None:
         result = f"查无此人：{employee_name}"
     else:
         details = "、".join([f"{k}：{v}" for k, v in info.items()])
-        result = f"{employee_name} — {details}"
+        result = f"{employee_name} — {details}（演示数据）"
     logger.info("工具返回结果：%s", result)
     return result
 
@@ -178,7 +180,7 @@ def make_search_web_tool() -> FunctionTool:
 
 
 def send_email_notification(to_employee: str, subject: str, body: str) -> str:
-    """模拟发送邮件通知给指定员工。
+    """⚠️ 模拟功能：不会真实发送邮件，仅返回模拟成功消息。
 
     当用户需要通知、提醒或发送信息给其他员工时调用此工具。
     实际项目中可集成 SMTP 服务实现真实邮件发送。
@@ -189,14 +191,19 @@ def send_email_notification(to_employee: str, subject: str, body: str) -> str:
         body: 邮件正文
 
     Returns:
-        发送结果消息
+        模拟发送结果消息（包含 [模拟] 前缀标识）
     """
     logger.info(
         "执行工具 send_email_notification，to_employee=%s, subject=%s",
         to_employee,
         subject,
     )
-    result = f"邮件已成功发送给 {to_employee}，主题：{subject}"
+    logger.warning(
+        "模拟发送邮件：未接入 SMTP 服务，收件人=%s，主题=%s",
+        to_employee,
+        subject,
+    )
+    result = f"[模拟] 邮件已成功发送给 {to_employee}，主题：{subject}"
     logger.info("工具返回结果：%s", result)
     return result
 

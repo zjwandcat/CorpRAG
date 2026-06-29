@@ -1,0 +1,82 @@
+# ============================================================================
+# 金融研报智能体 API - ChromaDB StatefulSet（向量数据库）
+# ============================================================================
+# 使用 StatefulSet 确保 ChromaDB 数据持久化和稳定的网络标识
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: chromadb
+  namespace: agent-platform
+  labels:
+    app: chromadb
+    app.kubernetes.io/name: financial-agent-api
+    app.kubernetes.io/part-of: agent-platform
+    app.kubernetes.io/component: vector-db
+spec:
+  serviceName: chromadb-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chromadb
+  template:
+    metadata:
+      labels:
+        app: chromadb
+        app.kubernetes.io/name: financial-agent-api
+        app.kubernetes.io/part-of: agent-platform
+        app.kubernetes.io/component: vector-db
+    spec:
+      containers:
+        - name: chromadb
+          image: chromadb/chroma:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: IS_PERSISTENT
+              value: "TRUE"
+            - name: ANONYMIZED_TELEMETRY
+              value: "FALSE"
+            - name: PERSIST_DIRECTORY
+              value: /chroma/chroma
+          volumeMounts:
+            - name: chromadb-data
+              mountPath: /chroma/chroma
+          readinessProbe:
+            httpGet:
+              path: /api/v1/heartbeat
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/v1/heartbeat
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+  # volumeClaimTemplates 由 StatefulSet 自动创建 PVC
+  volumeClaimTemplates:
+    - metadata:
+        name: chromadb-data
+        labels:
+          app: chromadb
+          app.kubernetes.io/part-of: agent-platform
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

@@ -1,0 +1,30 @@
+# ============================================================================
+# 金融研报智能体 API - HPA（水平自动扩缩容）
+# ============================================================================
+# 前置条件：集群中必须安装 Metrics Server
+#   minikube: minikube addons enable metrics-server
+#   kind:     kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agent-api-hpa
+  namespace: agent-platform
+  labels:
+    app: agent-api
+    app.kubernetes.io/name: financial-agent-api
+    app.kubernetes.io/part-of: agent-platform
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agent-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

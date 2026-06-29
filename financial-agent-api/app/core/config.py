@@ -1,3 +1,12 @@
+"""应用配置模块
+
+集中管理应用程序的所有配置项，包括模型供应商配置、NVIDIA NIM 配置、
+向量数据库路径、RAG 参数、限流策略、LLM 参数、LangGraph 配置、
+Reranker 配置、Blueprint 配置、多Agent协作配置、MCP 配置和审查配置。
+
+配置优先级：环境变量 > nim_config.txt 文件 > 默认值。
+"""
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -115,7 +124,7 @@ class Settings:
     NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "") or _config_from_file.get("api_key", "")
 
     CHROMA_DB_DIR: Path = Path(os.getenv("CHROMA_DB_DIR", "./chroma_db"))
-    KNOWLEDGE_DIR: Path = Path(os.getenv("KNOWLEDGE_DIR", "./data/knowledge_base"))
+    KNOWLEDGE_DIR: Path = Path(os.getenv("KNOWLEDGE_DIR", "./data/reports"))
 
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "500"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
@@ -157,6 +166,107 @@ class Settings:
     BLUEPRINT_EMBEDDINGS_MODELNAME: str = os.getenv("BLUEPRINT_EMBEDDINGS_MODELNAME", "")
     BLUEPRINT_EMBEDDINGS_DIMENSIONS: int = int(os.getenv("BLUEPRINT_EMBEDDINGS_DIMENSIONS", "1024"))
     BLUEPRINT_TIMEOUT: int = int(os.getenv("BLUEPRINT_TIMEOUT", "30"))
+
+    # ---- 多Agent协作配置 ----
+    MULTI_AGENT_ENABLED: bool = os.getenv("MULTI_AGENT_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
+    # ---- MCP 配置 ----
+    MCP_ENABLED: bool = os.getenv("MCP_ENABLED", "false").lower() in ("true", "1", "yes")
+    MCP_GITHUB_ENABLED: bool = os.getenv("MCP_GITHUB_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    MCP_FILESYSTEM_ENABLED: bool = os.getenv("MCP_FILESYSTEM_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    MCP_DATABASE_ENABLED: bool = os.getenv("MCP_DATABASE_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    MCP_WEBSEARCH_ENABLED: bool = os.getenv("MCP_WEBSEARCH_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    MCP_TOOL_CALL_TIMEOUT: int = int(os.getenv("MCP_TOOL_CALL_TIMEOUT", "30"))
+
+    # ---- 审查配置 ----
+    WORKER_TIMEOUT_SECONDS: int = int(os.getenv("WORKER_TIMEOUT_SECONDS", "60"))
+    MAX_CONCURRENT_REVIEWS: int = int(os.getenv("MAX_CONCURRENT_REVIEWS", "10"))
+    REVIEW_CONFIG_FILE: Path = Path(os.getenv("REVIEW_CONFIG_FILE", "./review_config.json"))
+
+    # ---- 安全与合规配置 ----
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    ENABLE_PII_GUARD: bool = os.getenv("ENABLE_PII_GUARD", "true").lower() in ("true", "1", "yes")
+    ENABLE_PROMPT_GUARD: bool = os.getenv("ENABLE_PROMPT_GUARD", "true").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    ENABLE_RATE_LIMIT: bool = os.getenv("ENABLE_RATE_LIMIT", "true").lower() in ("true", "1", "yes")
+    # 测试用 API Key（仅开发环境使用，生产环境通过 K8s Secret 注入）
+    TEST_API_KEY: str = os.getenv("TEST_API_KEY", "")
+
+    # ---- KG 知识图谱配置 ----
+    KG_ENABLED: bool = os.getenv("KG_ENABLED", "false").lower() in ("true", "1", "yes")
+    KG_MAX_TRIPLETS_PER_DOC: int = int(os.getenv("KG_MAX_TRIPLETS_PER_DOC", "50"))
+    KG_SEARCH_MAX_DEPTH: int = int(os.getenv("KG_SEARCH_MAX_DEPTH", "2"))
+    KG_STORAGE_PATH: str = os.getenv("KG_STORAGE_PATH", "./kg_store")
+
+    # ---- HITL Human-in-the-Loop 配置 ----
+    HITL_ENABLED: bool = os.getenv("HITL_ENABLED", "false").lower() in ("true", "1", "yes")
+    HITL_HIGH_RISK_TOOLS: str = os.getenv("HITL_HIGH_RISK_TOOLS", "send_email_notification")
+    HITL_APPROVAL_TIMEOUT_SECONDS: int = int(os.getenv("HITL_APPROVAL_TIMEOUT_SECONDS", "300"))
+
+    # ---- Guardrails 死循环防护配置 ----
+    GUARDRAILS_ENABLED: bool = os.getenv("GUARDRAILS_ENABLED", "true").lower() in ("true", "1", "yes")
+    GUARDRAILS_MAX_TOOL_REPETITION: int = int(os.getenv("GUARDRAILS_MAX_TOOL_REPETITION", "3"))
+    GUARDRAILS_REPETITION_WINDOW: int = int(os.getenv("GUARDRAILS_REPETITION_WINDOW", "5"))
+
+    # ---- MLflow 实验追踪配置 ----
+    MLFLOW_TRACKING_URI: str = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    MLFLOW_ENABLED: bool = os.getenv("MLFLOW_ENABLED", "false").lower() in ("true", "1", "yes")
+    MLFLOW_EXPERIMENT_NAME: str = os.getenv("MLFLOW_EXPERIMENT_NAME", "financial-agent-rag")
+    MLFLOW_REQUEST_TIMEOUT: int = int(os.getenv("MLFLOW_REQUEST_TIMEOUT", "5"))
+
+    # ---- 漂移检测配置 ----
+    DRIFT_ENABLED: bool = os.getenv("DRIFT_ENABLED", "true").lower() in ("true", "1", "yes")
+    DRIFT_DETECTION_METHOD: str = os.getenv("DRIFT_DETECTION_METHOD", "ks_test")
+    DRIFT_THRESHOLD: float = float(os.getenv("DRIFT_THRESHOLD", "0.05"))
+    DRIFT_REFERENCE_DATASET_SIZE: int = int(os.getenv("DRIFT_REFERENCE_DATASET_SIZE", "100"))
+    DRIFT_REFERENCE_EMBEDDINGS_PATH: str = os.getenv(
+        "DRIFT_REFERENCE_EMBEDDINGS_PATH", "./drift_reference_embeddings.npy"
+    )
+
+    # ---- A/B 测试配置 ----
+    AB_TESTING_ENABLED: bool = os.getenv("AB_TESTING_ENABLED", "false").lower() in ("true", "1", "yes")
+    AB_BUCKET_A_RATIO: float = float(os.getenv("AB_BUCKET_A_RATIO", "0.5"))
+    AB_BUCKET_A_STRATEGY: str = os.getenv("AB_BUCKET_A_STRATEGY", "self_hosted_rag")
+    AB_BUCKET_B_STRATEGY: str = os.getenv("AB_BUCKET_B_STRATEGY", "blueprint_rag")
+
+    # ---- 意图预测配置 ----
+    INTENT_PREDICTION_ENABLED: bool = os.getenv("INTENT_PREDICTION_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    INTENT_MODEL_PATH: str = os.getenv("INTENT_MODEL_PATH", "./intent_model.pkl")
+
+    # ---- 推荐配置 ----
+    RECOMMENDATION_ENABLED: bool = os.getenv("RECOMMENDATION_ENABLED", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    RECOMMENDATION_TOP_K: int = int(os.getenv("RECOMMENDATION_TOP_K", "3"))
 
 
 settings = Settings()

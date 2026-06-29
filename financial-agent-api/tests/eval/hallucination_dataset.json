@@ -1,0 +1,107 @@
+[
+  {
+    "query": "张三的邮箱是什么",
+    "context": "通讯录记录：张三，研发中心工程师，邮箱 zhangsan@company.com，分机 8001",
+    "response": "张三的邮箱是 zhangsan@company.com",
+    "expected_label": "faithful",
+    "explanation": "回复完全基于上下文中的通讯录信息，无幻觉"
+  },
+  {
+    "query": "李四的职位是什么",
+    "context": "通讯录记录：李四，产品部产品经理，邮箱 lisi@company.com",
+    "response": "李四是产品部总监",
+    "expected_label": "hallucinated",
+    "explanation": "上下文中李四的职位是产品经理，回复将其虚构成总监"
+  },
+  {
+    "query": "公司报销流程是什么",
+    "context": "报销制度第3条：员工应在费用发生后30天内提交报销申请，需附发票原件及部门主管审批",
+    "response": "公司报销流程要求员工在费用发生后30天内提交报销申请，需附发票原件及部门主管审批",
+    "expected_label": "faithful",
+    "explanation": "回复准确复述了上下文中的报销流程信息"
+  },
+  {
+    "query": "公司报销流程是什么",
+    "context": "报销制度第3条：员工应在费用发生后30天内提交报销申请，需附发票原件及部门主管审批",
+    "response": "公司报销流程要求员工在费用发生后60天内提交报销申请，需附发票复印件及HR审批",
+    "expected_label": "hallucinated",
+    "explanation": "回复将30天改为60天、发票原件改为复印件、部门主管改为HR，多处信息与上下文不符"
+  },
+  {
+    "query": "王五的部门是什么",
+    "context": "未找到王五的相关信息",
+    "response": "王五是财务部的会计",
+    "expected_label": "hallucinated",
+    "explanation": "上下文明确说明未找到王五的信息，回复却编造了具体部门和职位"
+  },
+  {
+    "query": "赵六的联系方式",
+    "context": "通讯录记录：赵六，市场部专员，邮箱 zhaoliu@company.com",
+    "response": "抱歉，我没有找到赵六的联系方式信息",
+    "expected_label": "faithful",
+    "explanation": "虽然上下文有赵六信息，但模型未正确提取。这属于检索/提取失败而非幻觉，但标签为faithful因为回复没有编造信息"
+  },
+  {
+    "query": "请假制度怎么规定的",
+    "context": "请假制度：年假按工龄计算，1-5年5天，5-10年10天，10年以上15天。病假需提供医院证明",
+    "response": "年假按工龄计算，1-5年5天，5-10年10天，10年以上15天。病假需提供医院证明",
+    "expected_label": "faithful",
+    "explanation": "回复完全基于上下文，准确复述了请假制度"
+  },
+  {
+    "query": "请假制度怎么规定的",
+    "context": "请假制度：年假按工龄计算，1-5年5天，5-10年10天，10年以上15天。病假需提供医院证明",
+    "response": "年假按工龄计算，1-5年3天，5-10年7天，10年以上20天。病假无需证明",
+    "expected_label": "hallucinated",
+    "explanation": "回复中的年假天数和病假要求均与上下文不一致"
+  },
+  {
+    "query": "IT支持怎么联系",
+    "context": "IT支持热线：400-888-9999，工作日 9:00-18:00，邮箱 it-support@company.com",
+    "response": "IT支持可以通过热线 400-888-9999 联系，工作日 9:00-18:00，也可以发邮件到 it-support@company.com",
+    "expected_label": "faithful",
+    "explanation": "回复准确包含了上下文中的所有联系方式信息"
+  },
+  {
+    "query": "IT支持怎么联系",
+    "context": "IT支持热线：400-888-9999，工作日 9:00-18:00，邮箱 it-support@company.com",
+    "response": "IT支持可以拨打 12345 联系，24小时在线",
+    "expected_label": "hallucinated",
+    "explanation": "回复编造了不存在的电话号码和服务时间"
+  },
+  {
+    "query": "研发中心负责哪些项目",
+    "context": "知识图谱查询结果：研发中心 → 负责 → 项目A，研发中心 → 负责 → 项目B，研发中心 → 协作 → 产品部",
+    "response": "研发中心负责项目A和项目B，并与产品部有协作关系",
+    "expected_label": "faithful",
+    "explanation": "回复准确反映了知识图谱中的实体关系"
+  },
+  {
+    "query": "研发中心负责哪些项目",
+    "context": "知识图谱查询结果：研发中心 → 负责 → 项目A，研发中心 → 负责 → 项目B",
+    "response": "研发中心负责项目A、项目B和项目C",
+    "expected_label": "hallucinated",
+    "explanation": "回复额外编造了上下文中不存在的项目C"
+  },
+  {
+    "query": "财务部报销审批流程",
+    "context": "报销流程：员工提交 → 部门主管审批 → 财务部审核 → 出纳付款",
+    "response": "报销流程是：员工提交申请，然后部门主管审批，接着财务部审核，最后出纳付款",
+    "expected_label": "faithful",
+    "explanation": "回复完整准确地复述了上下文中的审批流程"
+  },
+  {
+    "query": "财务部报销审批流程",
+    "context": "报销流程：员工提交 → 部门主管审批 → 财务部审核 → 出纳付款",
+    "response": "报销流程是：员工提交后由CEO直接审批，然后财务打款",
+    "expected_label": "hallucinated",
+    "explanation": "回复将多级审批流程简化为CEO直接审批，与上下文不符"
+  },
+  {
+    "query": "2024年AI行业趋势",
+    "context": "联网搜索结果：2024年AI行业主要趋势包括多模态大模型、AI Agent、端侧部署、AI安全治理",
+    "response": "2024年AI行业主要趋势包括多模态大模型、AI Agent、端侧部署和AI安全治理",
+    "expected_label": "faithful",
+    "explanation": "回复准确反映了联网搜索结果中的信息"
+  }
+]

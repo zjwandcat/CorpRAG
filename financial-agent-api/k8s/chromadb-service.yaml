@@ -1,0 +1,25 @@
+# ============================================================================
+# 金融研报智能体 API - ChromaDB Headless Service
+# ============================================================================
+# Headless Service (clusterIP: None) 配合 StatefulSet 使用
+# Pod DNS 格式：chromadb-0.chromadb-service.agent-platform.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: chromadb-service
+  namespace: agent-platform
+  labels:
+    app: chromadb
+    app.kubernetes.io/name: financial-agent-api
+    app.kubernetes.io/part-of: agent-platform
+    app.kubernetes.io/component: vector-db
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: chromadb
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP

@@ -9,6 +9,10 @@ llama-index-vector-stores-chroma>=0.2.0
 # BM25 检索器由启动脚本单独安装（pystemmer 需要预编译版本）
 # llama-index-retrievers-bm25>=0.2.0
 
+# Reranker 精排（可选依赖，按需安装）
+# llama-index-postprocessor-flag-embedding-reranker>=0.2.0
+# llama-index-postprocessor-sbert>=0.2.0
+
 # Web 框架
 fastapi>=0.115
 uvicorn[standard]>=0.34
@@ -39,3 +43,9 @@ markdown>=3.5
 
 # HTTP
 requests>=2.32
+
+# 硬件加速（可选依赖，按需安装）
+# torch>=2.1          # CUDA GPU 加速（需 CUDA Toolkit）
+# openvino>=2024.0    # Intel 核显加速
+# optimum[intel]>=1.14  # OpenVINO 模型导出
+# onnxruntime>=1.16   # ONNX Runtime 推理

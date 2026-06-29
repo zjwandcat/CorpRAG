@@ -4,9 +4,10 @@
 支持多轮对话记忆（MemorySaver）、条件路由和 SSE 流式状态推送。
 """
 
+import asyncio
 import json
-import logging
 import random
+
 import time
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -28,10 +29,11 @@ from langgraph.graph.message import add_messages
 
 from app.agent.chain import _extract_sources, _infer_result_type, get_rate_limiter
 from app.core.enums import ErrorCode, SSEEventType
+from app.core.logging_config import log_agent_step, log_function_call, log_rag_query, get_logger
 from app.exceptions import LLMInvocationError, RateLimitExceededError
 from app.models.schemas import ChatResponse, SourceReference, ToolCallStep
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 __all__ = ["AgentGraph", "AgentState", "build_agent_graph"]
 
@@ -88,6 +90,8 @@ class AgentState(TypedDict):
         "agent_processing",
         "tool_executing",
         "retrieving",
+        "hitl_pending",
+        "kg_retrieving",
         "completed",
         "error",
     ]
@@ -96,20 +100,33 @@ class AgentState(TypedDict):
     iteration_count: int
     """Agent 循环计数器，默认 0，每次 agent_node 执行递增"""
 
+    # === v5.1 新增字段 ===
+    hitl_pending_approval: dict | None
+    """HITL 审批挂起信息，默认 None"""
+
+    tool_call_history: list[dict]
+    """工具调用历史（死循环检测用），默认空列表"""
+
+    kg_context: list[dict]
+    """知识图谱检索结果，默认空列表"""
+
+    guardrail_violations: list[dict]
+    """护栏违规记录，默认空列表"""
+
 
 # =====================================================================
 # 节点函数
 # =====================================================================
 
 
-def agent_node(
+async def agent_node(
     state: AgentState,
     llm_with_tools: BaseChatModel,
 ) -> dict:
     """LLM 决策节点：调用 ChatNVIDIA，返回 AIMessage 更新
 
     1. 检查 iteration_count，若 >= MAX_TOOL_ROUNDS 则追加强制结束提示
-    2. 调用 llm_with_tools.invoke(state["messages"])
+    2. 调用 llm_with_tools.ainvoke(state["messages"])
     3. 更新 current_status = "agent_processing"
     4. 递增 iteration_count
     5. 返回状态更新片段
@@ -129,14 +146,49 @@ def agent_node(
         # 在消息列表末尾追加一条系统提示
         messages = list(messages) + [SystemMessage(content=_FORCE_END_PROMPT)]
 
-    # 调用 LLM（含重试逻辑）
-    ai_message = _invoke_with_retry(llm_with_tools, messages)
+    # 调用 LLM（含异步重试逻辑）
+    step_start = time.monotonic()
+    try:
+        ai_message = await _ainvoke_with_retry(llm_with_tools, messages)
+        step_status = "success"
+    except Exception:
+        duration_ms = (time.monotonic() - step_start) * 1000
+        log_agent_step(
+            step_name="agent_node",
+            tool_name="llm_decision",
+            duration_ms=duration_ms,
+            status="error",
+        )
+        raise
 
+    duration_ms = (time.monotonic() - step_start) * 1000
     new_iteration = iteration_count + 1
+
+    # 提取 tool_calls 信息用于日志
+    tool_calls_info = [tc.get("name", "") for tc in (ai_message.tool_calls or [])]
+    tool_calls_summary = ",".join(tool_calls_info) if tool_calls_info else "none"
+
     logger.info(
         "agent_node 完成，iteration=%d，tool_calls=%s",
         new_iteration,
-        [tc.get("name", "") for tc in (ai_message.tool_calls or [])],
+        tool_calls_info,
+    )
+
+    # 记录 Agent 步骤日志（LLM 决策）
+    log_agent_step(
+        step_name="agent_node",
+        tool_name="llm_decision",
+        duration_ms=duration_ms,
+        status=step_status,
+    )
+
+    # 记录函数调用日志（包含 tool_calls 决策详情）
+    log_function_call(
+        func_name="agent_node",
+        args=(new_iteration,),
+        kwargs={"tool_calls": tool_calls_summary},
+        duration_ms=duration_ms,
+        result_summary=f"tool_calls={tool_calls_summary}",
     )
 
     return {
@@ -146,14 +198,15 @@ def agent_node(
     }
 
 
-def _invoke_with_retry(
+async def _ainvoke_with_retry(
     llm_with_tools: BaseChatModel,
     messages: list[Any],
     max_retries: int | None = None,
 ) -> AIMessage:
-    """调用 LLM 并在 429 限流时指数退避重试
+    """异步调用 LLM 并在 429 限流时指数退避重试
 
-    使用并发池控制 + 滑动窗口限速，避免洪峰式请求。
+    使用 asyncio.sleep 替代 time.sleep，避免阻塞事件循环，
+    确保 SSE 心跳信号正常发送。
     """
     from app.core.config import settings
 
@@ -168,24 +221,50 @@ def _invoke_with_retry(
         wait = 0.0
         for attempt in range(max_retries):
             try:
-                return llm_with_tools.invoke(messages)
+                invoke_start = time.monotonic()
+                result = await llm_with_tools.ainvoke(messages)
+                invoke_ms = (time.monotonic() - invoke_start) * 1000
+                log_function_call(
+                    func_name="_ainvoke_with_retry",
+                    kwargs={"attempt": attempt},
+                    duration_ms=invoke_ms,
+                    result_summary="llm_ainvoke_success",
+                )
+                return result
             except Exception as exc:
                 err_str = str(exc)
                 if ErrorCode.RATE_LIMIT in err_str and attempt < max_retries - 1:
-                    # 指数退避 + 随机抖动
                     base_wait = min(10 * (2**attempt), 120)
                     jitter = random.uniform(1, base_wait * 0.5)
                     wait = base_wait + jitter
                     logger.warning("429 限流，%.1f 秒后重试（第 %d 次）", wait, attempt + 1)
-                    time.sleep(wait)
+                    log_agent_step(
+                        step_name="_ainvoke_with_retry",
+                        tool_name="llm_ainvoke",
+                        duration_ms=wait * 1000,
+                        status="timeout",
+                    )
+                    await asyncio.sleep(wait)
                     limiter.wait()
                 elif ErrorCode.RATE_LIMIT in err_str:
+                    log_agent_step(
+                        step_name="_ainvoke_with_retry",
+                        tool_name="llm_ainvoke",
+                        duration_ms=None,
+                        status="error",
+                    )
                     raise RateLimitExceededError(
                         message="LLM 调用频率超限，重试次数已耗尽",
                         retry_after=int(wait) if wait > 0 else None,
                         details=str(exc),
                     ) from exc
                 else:
+                    log_agent_step(
+                        step_name="_ainvoke_with_retry",
+                        tool_name="llm_ainvoke",
+                        duration_ms=None,
+                        status="error",
+                    )
                     raise LLMInvocationError(message="LLM 调用失败", details=str(exc)) from exc
     finally:
         limiter.release()
@@ -200,11 +279,15 @@ def tool_node(
     """通用工具执行节点：执行非检索类 tool_calls
 
     1. 从最后一条 AIMessage 提取非检索类 tool_calls
-    2. 顺序执行每个工具调用
-    3. 每个工具执行结果封装为 ToolMessage 追加至 messages
-    4. 同时构建 ToolCallStep 追加至 tool_outputs
-    5. 更新 current_status = "tool_executing"
+    2. v5.1 新增：Guardrails 死循环检测（每个工具调用前检查）
+    3. 顺序执行每个工具调用
+    4. 每个工具执行结果封装为 ToolMessage 追加至 messages
+    5. 同时构建 ToolCallStep 追加至 tool_outputs
+    6. 更新 current_status = "tool_executing"
     """
+    from app.core.enums import GuardrailAction
+    from app.exceptions import InfiniteLoopDetectedError
+
     messages = state["messages"]
     last_message = messages[-1]
 
@@ -219,15 +302,62 @@ def tool_node(
     if not non_retrieval_calls:
         return {"current_status": "tool_executing"}
 
+    # v5.1 新增：Guardrails 死循环检测
+    guardrail_detector = None
+    try:
+        from app.core.dependencies import get_guardrail_detector
+
+        guardrail_detector = get_guardrail_detector()
+    except Exception as exc:
+        logger.warning("Guardrail 检测器获取失败，降级跳过：%s", exc)
+
+    for tool_call in non_retrieval_calls:
+        tool_name = tool_call.get("name", "")
+        tool_args = tool_call.get("args", {})
+
+        if guardrail_detector is not None:
+            try:
+                action = guardrail_detector.check(tool_name, tool_args)
+                if action == GuardrailAction.BLOCK:
+                    logger.warning(
+                        "Guardrails 阻止工具调用：%s（死循环检测）", tool_name,
+                    )
+                    raise InfiniteLoopDetectedError(
+                        tool_name=tool_name,
+                        repetition_count=guardrail_detector._max_repetition,
+                    )
+                if action == GuardrailAction.WARN:
+                    logger.warning(
+                        "Guardrails 警告：工具 %s 接近死循环阈值", tool_name,
+                    )
+            except InfiniteLoopDetectedError:
+                # 记录违规并向上抛出，让外层 try/except 捕获
+                raise
+            except Exception as exc:
+                logger.warning("Guardrails 检测异常，降级跳过：%s", exc)
+
     new_messages: list[ToolMessage] = []
     new_tool_outputs: list[ToolCallStep] = []
+
+    # v5.1 新增：记录工具调用历史
+    new_tool_call_history: list[dict] = list(state.get("tool_call_history", []))
+    new_guardrail_violations: list[dict] = list(state.get("guardrail_violations", []))
 
     for tool_call in non_retrieval_calls:
         tool_name = tool_call.get("name", "")
         tool_args = tool_call.get("args", {})
         tool_call_id = tool_call.get("id", "")
 
+        # v5.1 新增：追加工具调用历史
+        new_tool_call_history.append({
+            "tool_name": tool_name,
+            "tool_args": json.dumps(tool_args, ensure_ascii=False, default=str),
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+
         logger.info("工具调用：%s", tool_name)
+        # 参数摘要：截断敏感信息，仅保留键名
+        args_summary = ",".join(f"{k}=..." for k in tool_args.keys()) if tool_args else "none"
         logger.debug("工具参数：%s", json.dumps(tool_args, ensure_ascii=False))
 
         step_start = time.monotonic()
@@ -249,6 +379,24 @@ def tool_node(
                 step_status = "error"
 
         duration_ms = int((time.monotonic() - step_start) * 1000)
+
+        # 记录 Agent 步骤日志（工具调用）
+        log_agent_step(
+            step_name="tool_node",
+            tool_name=tool_name,
+            duration_ms=duration_ms,
+            status=step_status,
+        )
+
+        # 记录函数调用日志（工具参数摘要 + 执行结果状态）
+        result_summary = str(result)[:100] if result else "empty"
+        log_function_call(
+            func_name=f"tool_node.{tool_name}",
+            kwargs={"args_summary": args_summary},
+            duration_ms=duration_ms,
+            result_summary=result_summary,
+        )
+
         sources = _extract_sources(result, tool_name)
 
         step = ToolCallStep(
@@ -267,6 +415,8 @@ def tool_node(
         "messages": new_messages,
         "tool_outputs": new_tool_outputs,
         "current_status": "tool_executing",
+        "tool_call_history": new_tool_call_history,
+        "guardrail_violations": new_guardrail_violations,
     }
 
 
@@ -305,10 +455,44 @@ def retrieval_node(
         doc for doc in (all_docs_data.get("documents") or []) if doc is not None
     ]
 
+    # v5.1 新增：Guardrails 死循环检测（检索节点）
+    guardrail_detector = None
+    try:
+        from app.core.dependencies import get_guardrail_detector
+
+        guardrail_detector = get_guardrail_detector()
+    except Exception as exc:
+        logger.warning("Guardrail 检测器获取失败，降级跳过：%s", exc)
+
     for tool_call in last_message.tool_calls:
         tool_name = tool_call.get("name", "")
         tool_args = tool_call.get("args", {})
         tool_call_id = tool_call.get("id", "")
+
+        # v5.1 新增：检索前 Guardrails 重复检测
+        if guardrail_detector is not None:
+            try:
+                from app.core.enums import GuardrailAction
+                from app.exceptions import InfiniteLoopDetectedError
+
+                action = guardrail_detector.check(tool_name, tool_args)
+                if action == GuardrailAction.BLOCK:
+                    logger.warning(
+                        "Guardrails 阻止检索调用：%s（死循环检测）", tool_name,
+                    )
+                    raise InfiniteLoopDetectedError(
+                        tool_name=tool_name,
+                        repetition_count=guardrail_detector._max_repetition,
+                    )
+                if action == GuardrailAction.WARN:
+                    logger.warning(
+                        "Guardrails 警告：检索工具 %s 接近死循环阈值", tool_name,
+                    )
+            except InfiniteLoopDetectedError:
+                # 记录违规并向上抛出，让外层 try/except 捕获
+                raise
+            except Exception as exc:
+                logger.warning("Guardrails 检测异常，降级跳过：%s", exc)
 
         if tool_name == "search_internal_documents":
             # 执行检索
@@ -329,6 +513,7 @@ def retrieval_node(
                 )
 
                 # Step 2: Reranker 精排
+                rerank_scores: list[float] = []
                 if docs and reranker is not None:
                     try:
                         rerank_results = reranker.rerank(query=query, documents=docs, top_n=3)
@@ -336,6 +521,7 @@ def retrieval_node(
                             docs = [r.document for r in rerank_results]
                             for r in rerank_results:
                                 r.document.metadata["rerank_score"] = r.relevance_score
+                                rerank_scores.append(r.relevance_score)
                             logger.info("Reranker 精排完成，top %d 结果", len(rerank_results))
                         else:
                             logger.warning("Reranker 降级，使用 RRF 原始排序")
@@ -375,6 +561,24 @@ def retrieval_node(
                     logger.info("检索到 %d 个相关文本块（混合检索 + Reranker）", len(docs))
 
                 duration_ms = int((time.monotonic() - step_start) * 1000)
+
+                # 记录 Agent 步骤日志（检索步骤）
+                log_agent_step(
+                    step_name="retrieval_node",
+                    tool_name="search_internal_documents",
+                    duration_ms=duration_ms,
+                    status="success",
+                )
+
+                # 记录 RAG 检索日志（查询关键词、命中文档数、Reranker 分数）
+                log_rag_query(
+                    query=query,
+                    top_k=3,
+                    hit_count=len(docs) if docs else 0,
+                    duration_ms=duration_ms,
+                    scores=rerank_scores if rerank_scores else None,
+                )
+
                 sources = _extract_sources(result, tool_name)
                 all_sources.extend(sources)
 
@@ -394,6 +598,23 @@ def retrieval_node(
                 error_result = f"检索失败：{exc!s}"
                 logger.error("检索执行失败：%s", exc)
                 duration_ms = int((time.monotonic() - step_start) * 1000)
+
+                # 记录 Agent 步骤日志（检索失败）
+                log_agent_step(
+                    step_name="retrieval_node",
+                    tool_name="search_internal_documents",
+                    duration_ms=duration_ms,
+                    status="error",
+                )
+
+                # 记录 RAG 检索日志（失败情况）
+                log_rag_query(
+                    query=query,
+                    top_k=3,
+                    hit_count=0,
+                    duration_ms=duration_ms,
+                )
+
                 step = ToolCallStep(
                     tool_name=tool_name,
                     tool_args=tool_args,
@@ -412,6 +633,9 @@ def retrieval_node(
             step_start = time.monotonic()
             result_type = _infer_result_type(tool_name)
 
+            # 参数摘要：截断敏感信息，仅保留键名
+            args_summary = ",".join(f"{k}=..." for k in tool_args.keys()) if tool_args else "none"
+
             # 通过函数参数 tools_by_name 查找工具（闭包注入，线程安全）
             tool_func = tools_by_name.get(tool_name)
             if tool_func is None:
@@ -429,6 +653,24 @@ def retrieval_node(
                     step_status = "error"
 
             duration_ms = int((time.monotonic() - step_start) * 1000)
+
+            # 记录 Agent 步骤日志（非检索工具调用）
+            log_agent_step(
+                step_name="retrieval_node",
+                tool_name=tool_name,
+                duration_ms=duration_ms,
+                status=step_status,
+            )
+
+            # 记录函数调用日志
+            result_summary = str(result)[:100] if result else "empty"
+            log_function_call(
+                func_name=f"retrieval_node.{tool_name}",
+                kwargs={"args_summary": args_summary},
+                duration_ms=duration_ms,
+                result_summary=result_summary,
+            )
+
             sources = _extract_sources(result, tool_name)
 
             step = ToolCallStep(
@@ -456,18 +698,99 @@ def retrieval_node(
 # =====================================================================
 
 
+def hitl_gate_node(state: AgentState) -> dict:
+    """HITL 审批门节点（v5.1 新增）
+
+    当高风险工具调用需要人工审批时，此节点负责：
+    1. 检查审批状态（通过 HITLManager 查询）
+    2. 审批通过/拒绝/过期 → 清除挂起状态，让流程继续
+    3. 仍在等待审批 → 保持 hitl_pending 状态
+    4. 异常时降级：清除挂起状态，避免阻塞主流程
+    """
+    try:
+        from app.core.dependencies import get_hitl_manager
+
+        hitl_manager = get_hitl_manager()
+    except Exception as exc:
+        logger.warning("HITLManager 获取失败，降级跳过审批门：%s", exc)
+        return {"hitl_pending_approval": None, "current_status": "idle"}
+
+    pending = state.get("hitl_pending_approval")
+
+    if pending is None or hitl_manager is None:
+        return {"hitl_pending_approval": None, "current_status": "idle"}
+
+    try:
+        # 检查审批状态
+        approval_id = pending.get("task_id", "")
+        approval = hitl_manager.get_approval(approval_id)
+
+        if approval is None or approval.status == "expired":
+            # 审批过期或不存在，清除挂起状态
+            logger.info("HITL 审批已过期或不存在：%s", approval_id)
+            return {"hitl_pending_approval": None, "current_status": "idle"}
+
+        if approval.status == "approved":
+            # 审批通过，清除挂起状态，让工具继续执行
+            logger.info("HITL 审批已通过：%s", approval_id)
+            return {"hitl_pending_approval": None, "current_status": "idle"}
+
+        if approval.status == "rejected":
+            # 审批拒绝，清除挂起状态，Agent 生成替代话术
+            logger.info("HITL 审批已拒绝：%s", approval_id)
+            return {"hitl_pending_approval": None, "current_status": "idle"}
+
+        # 仍在等待审批
+        logger.debug("HITL 审批等待中：%s", approval_id)
+        return {"current_status": "hitl_pending"}
+
+    except Exception as exc:
+        logger.warning("HITL 审批门处理异常，降级清除挂起状态：%s", exc)
+        return {"hitl_pending_approval": None, "current_status": "idle"}
+
+
 def should_continue(state: AgentState) -> str:
     """根据 agent_node 输出决定路由方向
 
-    1. 最后一条消息无 tool_calls → "end"
-    2. tool_calls 包含 search_internal_documents → "retrieval"
-    3. tool_calls 仅包含非检索工具 → "tools"
+    1. v5.1 新增：HITL 审批检查 — hitl_pending_approval 非空时路由到 hitl_gate
+    2. 最后一条消息无 tool_calls → "end"
+    3. tool_calls 包含 search_internal_documents → "retrieval"
+    4. tool_calls 仅包含非检索工具 → "tools"
     """
+    # v5.1 新增：HITL 审批检查
+    try:
+        if state.get("hitl_pending_approval") is not None:
+            log_agent_step(
+                step_name="should_continue",
+                tool_name=None,
+                duration_ms=None,
+                status="success",
+            )
+            log_function_call(
+                func_name="should_continue",
+                kwargs={"route": "hitl_gate"},
+                result_summary="route=hitl_gate",
+            )
+            return "hitl_gate"
+    except Exception as exc:
+        logger.warning("HITL 审批检查异常，降级跳过：%s", exc)
+
     messages = state["messages"]
     last_message = messages[-1]
 
     # 无 tool_calls → 结束
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+        log_agent_step(
+            step_name="should_continue",
+            tool_name=None,
+            duration_ms=None,
+            status="success",
+        )
+        log_function_call(
+            func_name="should_continue",
+            kwargs={"route": "end"},
+            result_summary="route=end",
+        )
         return "end"
 
     # 有 tool_calls → 判断是否包含检索工具
@@ -476,8 +799,30 @@ def should_continue(state: AgentState) -> str:
     if "search_internal_documents" in tool_names:
         # 检索工具路由到 retrieval_node
         # 非检索工具也由 retrieval_node 内部分离处理
+        log_agent_step(
+            step_name="should_continue",
+            tool_name="search_internal_documents",
+            duration_ms=None,
+            status="success",
+        )
+        log_function_call(
+            func_name="should_continue",
+            kwargs={"route": "retrieval", "tool_names": ",".join(tool_names)},
+            result_summary="route=retrieval",
+        )
         return "retrieval"
 
+    log_agent_step(
+        step_name="should_continue",
+        tool_name=",".join(tool_names),
+        duration_ms=None,
+        status="success",
+    )
+    log_function_call(
+        func_name="should_continue",
+        kwargs={"route": "tools", "tool_names": ",".join(tool_names)},
+        result_summary="route=tools",
+    )
     return "tools"
 
 
@@ -508,44 +853,52 @@ def build_agent_graph(
     # 创建状态图
     graph = StateGraph(AgentState)
 
-    # 添加节点（使用 lambda 闭包注入依赖）
-    graph.add_node(
-        "agent",
-        lambda state: agent_node(state, llm_with_tools),
-    )
-    graph.add_node(
-        "tools",
-        lambda state: tool_node(state, tools_by_name),
-    )
-    graph.add_node(
-        "retrieval",
-        lambda state: retrieval_node(state, vectorstore, reranker, tools_by_name),
-    )
+    # 创建 async 包装函数（lambda 不支持 async）
+    async def _agent_node_wrapper(state: AgentState) -> dict:
+        return await agent_node(state, llm_with_tools)
+
+    async def _tool_node_wrapper(state: AgentState) -> dict:
+        # tool_node 是同步函数，直接调用
+        return tool_node(state, tools_by_name)
+
+    async def _retrieval_node_wrapper(state: AgentState) -> dict:
+        # retrieval_node 是同步函数，直接调用
+        return retrieval_node(state, vectorstore, reranker, tools_by_name)
+
+    # 添加节点
+    graph.add_node("agent", _agent_node_wrapper)
+    graph.add_node("tools", _tool_node_wrapper)
+    graph.add_node("retrieval", _retrieval_node_wrapper)
+
+    # v5.1 新增：HITL 审批门节点
+    graph.add_node("hitl_gate", hitl_gate_node)
 
     # 设置入口
     graph.set_entry_point("agent")
 
-    # 添加条件边：agent → (tools | retrieval | END)
+    # 添加条件边：agent → (tools | retrieval | hitl_gate | END)
     graph.add_conditional_edges(
         "agent",
         should_continue,
         {
             "tools": "tools",
             "retrieval": "retrieval",
+            "hitl_gate": "hitl_gate",
             "end": END,
         },
     )
 
-    # 添加回环边：tools → agent, retrieval → agent
+    # 添加回环边：tools → agent, retrieval → agent, hitl_gate → agent
     graph.add_edge("tools", "agent")
     graph.add_edge("retrieval", "agent")
+    graph.add_edge("hitl_gate", "agent")
 
     # 编译图（注入 MemorySaver 检查点）
     if memory_saver is None:
         memory_saver = MemorySaver()
     compiled = graph.compile(checkpointer=memory_saver)
 
-    logger.info("LangGraph 状态图构建完成，节点：agent, tools, retrieval")
+    logger.info("LangGraph 状态图构建完成，节点：agent, tools, retrieval, hitl_gate")
     return compiled
 
 
@@ -565,8 +918,8 @@ class AgentGraph:
         self._memory_saver = memory_saver
         logger.info("AgentGraph 初始化完成")
 
-    def run(self, query: str, session_id: str | None = None) -> ChatResponse:
-        """同步执行状态图，返回 ChatResponse
+    async def run(self, query: str, session_id: str | None = None) -> ChatResponse:
+        """异步执行状态图，返回 ChatResponse
 
         Args:
             query: 用户问题
@@ -582,7 +935,24 @@ class AgentGraph:
         if session_id is None:
             session_id = str(uuid4())
 
-        config = {"configurable": {"thread_id": session_id}}
+        # 记录状态图执行开始
+        log_agent_step(
+            step_name="AgentGraph.run",
+            tool_name=None,
+            duration_ms=None,
+            status="success",
+        )
+        log_function_call(
+            func_name="AgentGraph.run",
+            kwargs={"session_id": session_id, "query_len": len(query)},
+            result_summary="started",
+        )
+
+        # v5.1 新增：recursion_limit 防止无限循环
+        config: dict[str, Any] = {
+            "configurable": {"thread_id": session_id},
+            "recursion_limit": settings.LANGGRAPH_MAX_ITERATIONS + 2,
+        }
 
         # 构造输入：LangGraph + MemorySaver 会自动加载历史状态，
         # 因此只需传入新增的消息，避免 add_messages reducer 重复追加。
@@ -614,6 +984,10 @@ class AgentGraph:
                 "tool_outputs": [],
                 "current_status": "idle",
                 "iteration_count": saved_iteration_count,
+                "hitl_pending_approval": None,
+                "tool_call_history": [],
+                "kg_context": [],
+                "guardrail_violations": [],
             }
         else:
             # 新会话：需包含 SystemMessage + HumanMessage
@@ -627,14 +1001,30 @@ class AgentGraph:
                 "tool_outputs": [],
                 "current_status": "idle",
                 "iteration_count": 0,
+                "hitl_pending_approval": None,
+                "tool_call_history": [],
+                "kg_context": [],
+                "guardrail_violations": [],
             }
 
-        # 执行状态图
+        # 执行状态图（异步）
         try:
-            result = self._compiled_graph.invoke(input_state, config)
+            result = await self._compiled_graph.ainvoke(input_state, config)
         except Exception as exc:
             logger.error("状态图执行失败：%s", exc)
             total_duration_ms = int((time.monotonic() - total_start) * 1000)
+            log_agent_step(
+                step_name="AgentGraph.run",
+                tool_name=None,
+                duration_ms=total_duration_ms,
+                status="error",
+            )
+            log_function_call(
+                func_name="AgentGraph.run",
+                kwargs={"session_id": session_id},
+                duration_ms=total_duration_ms,
+                result_summary=f"error: {exc!s}"[:100],
+            )
             return ChatResponse(
                 answer=f"对话处理失败：{exc!s}",
                 answer_format="text",
@@ -665,6 +1055,20 @@ class AgentGraph:
         total_duration_ms = int((time.monotonic() - total_start) * 1000)
         logger.info("状态图执行完成，回答长度：%d，耗时：%dms", len(answer), total_duration_ms)
 
+        # 记录状态图执行完成
+        log_agent_step(
+            step_name="AgentGraph.run",
+            tool_name=None,
+            duration_ms=total_duration_ms,
+            status="success",
+        )
+        log_function_call(
+            func_name="AgentGraph.run",
+            kwargs={"session_id": session_id},
+            duration_ms=total_duration_ms,
+            result_summary=f"answer_len={len(answer)}, tools_used={tools_used}",
+        )
+
         return ChatResponse(
             answer=answer,
             answer_format="markdown",
@@ -692,6 +1096,19 @@ class AgentGraph:
         total_start = time.monotonic()
         event_seq = 0
 
+        # 记录流式执行开始
+        log_agent_step(
+            step_name="AgentGraph.run_stream",
+            tool_name=None,
+            duration_ms=None,
+            status="success",
+        )
+        log_function_call(
+            func_name="AgentGraph.run_stream",
+            kwargs={"thread_id": thread_id, "query_len": len(query)},
+            result_summary="started",
+        )
+
         def _make_event(event_type: SSEEventType, data: dict) -> dict:
             """构建 SSE 事件"""
             nonlocal event_seq
@@ -709,7 +1126,11 @@ class AgentGraph:
         # 推送 stream_start 事件
         yield _make_event(SSEEventType.STREAM_START, {})
 
-        config = {"configurable": {"thread_id": thread_id}}
+        # v5.1 新增：recursion_limit 防止无限循环
+        config: dict[str, Any] = {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": settings.LANGGRAPH_MAX_ITERATIONS + 2,
+        }
 
         # 构造输入：LangGraph + MemorySaver 会自动加载历史状态，
         # 因此只需传入新增的消息，避免 add_messages reducer 重复追加。
@@ -736,6 +1157,10 @@ class AgentGraph:
                 "tool_outputs": [],
                 "current_status": "idle",
                 "iteration_count": saved_iteration_count,
+                "hitl_pending_approval": None,
+                "tool_call_history": [],
+                "kg_context": [],
+                "guardrail_violations": [],
             }
         else:
             # 新会话：需包含 SystemMessage + HumanMessage
@@ -749,13 +1174,19 @@ class AgentGraph:
                 "tool_outputs": [],
                 "current_status": "idle",
                 "iteration_count": 0,
+                "hitl_pending_approval": None,
+                "tool_call_history": [],
+                "kg_context": [],
+                "guardrail_violations": [],
             }
+
 
         # 收集执行结果
         all_tool_outputs: list[ToolCallStep] = []
         all_retrieval_context: list[SourceReference] = []
         final_answer = ""
         final_messages: list[BaseMessage] = []
+        retry_count = 0
 
         try:
             # 使用 astream_events 监听节点执行
@@ -846,6 +1277,17 @@ class AgentGraph:
                                     "status": step.status,
                                 },
                             )
+                            # 工具执行失败时额外发送 TOOL_ERROR 事件
+                            if step.status == "error":
+                                yield _make_event(
+                                    SSEEventType.TOOL_ERROR,
+                                    {
+                                        "tool_name": step.tool_name,
+                                        "error_message": step.tool_result[:500]
+                                        if step.tool_result
+                                        else "工具执行失败",
+                                    },
+                                )
 
                     elif node_name == "retrieval":
                         # retrieval_node 完成
@@ -888,6 +1330,53 @@ class AgentGraph:
                                     "status": step.status,
                                 },
                             )
+                            # 工具执行失败时额外发送 TOOL_ERROR 事件
+                            if step.status == "error":
+                                yield _make_event(
+                                    SSEEventType.TOOL_ERROR,
+                                    {
+                                        "tool_name": step.tool_name,
+                                        "error_message": step.tool_result[:500]
+                                        if step.tool_result
+                                        else "工具执行失败",
+                                    },
+                                )
+
+                    # v5.1 新增：hitl_gate 节点事件
+                    elif node_name == "hitl_gate":
+                        try:
+                            pending = output.get("hitl_pending_approval")
+                            if pending:
+                                yield _make_event(
+                                    SSEEventType.HITL_APPROVAL_REQUIRED,
+                                    {
+                                        "approval_id": pending.get("task_id", ""),
+                                        "tool_name": pending.get("tool_name", ""),
+                                        "tool_args": pending.get("tool_args", {}),
+                                    },
+                                )
+                        except Exception as exc:
+                            logger.warning("HITL 事件推送异常，降级跳过：%s", exc)
+
+                # LLM 调用错误（如 429 限流）
+                elif kind == "on_chat_model_error":
+                    error_obj = event.get("data", {}).get("error")
+                    err_str = str(error_obj) if error_obj else ""
+                    if ErrorCode.RATE_LIMIT in err_str:
+                        retry_count += 1
+                        max_attempts = settings.RETRY_MAX_ATTEMPTS
+                        logger.warning(
+                            "LLM 429 限流错误，重试次数：%d/%d",
+                            retry_count,
+                            max_attempts,
+                        )
+                        yield _make_event(
+                            SSEEventType.AGENT_RETRY,
+                            {
+                                "attempt": retry_count,
+                                "max_attempts": max_attempts,
+                            },
+                        )
 
                 # 工具调用开始（从 LLM 输出中检测）
                 elif kind == "on_chat_model_stream":
@@ -915,7 +1404,56 @@ class AgentGraph:
                                 )
 
         except Exception as exc:
+            # v5.1 新增：捕获 InfiniteLoopDetectedError 并推送 Guardrails 事件
+            from app.exceptions import InfiniteLoopDetectedError
+
+            if isinstance(exc, InfiniteLoopDetectedError):
+                logger.warning("Guardrails 检测到死循环：%s", exc)
+                total_duration_ms = int((time.monotonic() - total_start) * 1000)
+                log_agent_step(
+                    step_name="AgentGraph.run_stream",
+                    tool_name=exc.tool_name,
+                    duration_ms=total_duration_ms,
+                    status="error",
+                )
+                yield _make_event(
+                    SSEEventType.GUARDRAIL_LOOP_DETECTED,
+                    {
+                        "tool_name": exc.tool_name or "unknown",
+                        "repetition_count": exc.repetition_count,
+                        "action": "block",
+                    },
+                )
+                # 优雅终止，返回安全提示
+                yield _make_event(
+                    SSEEventType.STREAM_END,
+                    {
+                        "chat_response": ChatResponse(
+                            answer="检测到系统处理异常，已终止操作。请重新描述您的问题。",
+                            answer_format="text",
+                            tools_used=[],
+                            intermediate_steps=[],
+                            total_duration_ms=int((time.monotonic() - total_start) * 1000),
+                            session_id=thread_id,
+                        ).model_dump(),
+                    },
+                )
+                return
+
             logger.error("流式执行失败：%s", exc)
+            total_duration_ms = int((time.monotonic() - total_start) * 1000)
+            log_agent_step(
+                step_name="AgentGraph.run_stream",
+                tool_name=None,
+                duration_ms=total_duration_ms,
+                status="error",
+            )
+            log_function_call(
+                func_name="AgentGraph.run_stream",
+                kwargs={"thread_id": thread_id},
+                duration_ms=total_duration_ms,
+                result_summary=f"error: {exc!s}"[:100],
+            )
             yield _make_event(
                 SSEEventType.STREAM_ERROR,
                 {
@@ -948,6 +1486,20 @@ class AgentGraph:
         # 推送 stream_end 事件
         total_duration_ms = int((time.monotonic() - total_start) * 1000)
         tools_used = [step.tool_name for step in all_tool_outputs]
+
+        # 记录流式执行完成
+        log_agent_step(
+            step_name="AgentGraph.run_stream",
+            tool_name=None,
+            duration_ms=total_duration_ms,
+            status="success",
+        )
+        log_function_call(
+            func_name="AgentGraph.run_stream",
+            kwargs={"thread_id": thread_id},
+            duration_ms=total_duration_ms,
+            result_summary=f"answer_len={len(final_answer)}, tools_used={tools_used}",
+        )
 
         chat_response = ChatResponse(
             answer=final_answer,
@@ -985,6 +1537,10 @@ class AgentGraph:
                 "tool_outputs": [],
                 "current_status": "idle",
                 "iteration_count": 0,
+                "hitl_pending_approval": None,
+                "tool_call_history": [],
+                "kg_context": [],
+                "guardrail_violations": [],
             }
             # 通过 update_state 覆盖当前状态
             self._compiled_graph.update_state(config, empty_state, as_node="agent")
@@ -1037,6 +1593,10 @@ class AgentGraph:
                 "tool_outputs": [],
                 "current_status": "idle",
                 "iteration_count": current_iteration,
+                "hitl_pending_approval": None,
+                "tool_call_history": [],
+                "kg_context": [],
+                "guardrail_violations": [],
             }
             self._compiled_graph.update_state(config, truncated_state, as_node="agent")
         except Exception as exc:
